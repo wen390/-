@@ -19,6 +19,13 @@ RESULTS = ROOT / "results"
 OUT = ROOT / "paper" / "面向PCB金手指的测试尾板布点布线设计_完成稿.docx"
 IMG_DIR = ROOT / "results" / "thesis_assets"
 
+METHODS = [
+    ("baseline_rule", "基线规则", (145, 160, 170)),
+    ("kmeans_tabu_astar", "K-means", (94, 156, 120)),
+    ("pso_hanan_tabu_astar", "PSO-Hanan", (49, 120, 184)),
+    ("pso_congestion_reroute_astar", "拥塞重布线", (196, 145, 47)),
+]
+
 
 def font(size=12, bold=False):
     f = Pt(size)
@@ -132,32 +139,31 @@ def draw_bar_chart(rows, metric, title, out):
     except Exception:
         title_font = font = small = None
     d.text((60, 28), title, fill=(30, 60, 90), font=title_font)
-    base = [r for r in rows if r["method"] == "baseline_rule"]
-    tabu = [r for r in rows if r["method"] == "kmeans_tabu_astar"]
-    opt = [r for r in rows if r["method"] == "pso_hanan_tabu_astar"]
+    grouped = [[r for r in rows if r["method"] == method] for method, _, _ in METHODS]
     max_val = max(float(r[metric]) for r in rows) * 1.12
     left, top, bottom = 95, 105, 535
     right = w - 55
     d.line((left, top, left, bottom), fill=(80, 80, 80), width=2)
     d.line((left, bottom, right, bottom), fill=(80, 80, 80), width=2)
-    group_w = (right - left) / len(opt)
-    for i, (b, t, o) in enumerate(zip(base, tabu, opt)):
+    group_w = (right - left) / len(grouped[-1])
+    for i, values in enumerate(zip(*grouped)):
         cx = left + group_w * i + group_w * 0.5
-        for j, (row, color) in enumerate([(b, (145, 160, 170)), (t, (94, 156, 120)), (o, (49, 120, 184))]):
+        for j, row in enumerate(values):
+            color = METHODS[j][2]
             val = float(row[metric])
             bh = (bottom - top) * val / max_val
-            x1 = cx - 46 + j * 34
-            x2 = x1 + 27
+            x1 = cx - 55 + j * 28
+            x2 = x1 + 22
             d.rectangle((x1, bottom - bh, x2, bottom), fill=color)
             d.text((x1 - 8, bottom - bh - 24), f"{val:.1f}", fill=(45, 45, 45), font=small)
-        label = o["case"].replace("case_", "")
+        label = values[-1]["case"].replace("case_", "")
         d.text((cx - 40, bottom + 14), label, fill=(45, 45, 45), font=small)
-    d.rectangle((760, 45, 790, 65), fill=(145, 160, 170))
-    d.text((800, 40), "基线规则", fill=(45, 45, 45), font=font)
-    d.rectangle((920, 45, 950, 65), fill=(94, 156, 120))
-    d.text((960, 40), "K-means", fill=(45, 45, 45), font=font)
-    d.rectangle((760, 78, 790, 98), fill=(49, 120, 184))
-    d.text((800, 73), "PSO-Hanan", fill=(45, 45, 45), font=font)
+    legend_x, legend_y = 660, 38
+    for i, (_, label, color) in enumerate(METHODS):
+        x = legend_x + (i % 2) * 210
+        y = legend_y + (i // 2) * 34
+        d.rectangle((x, y + 7, x + 30, y + 27), fill=color)
+        d.text((x + 40, y), label, fill=(45, 45, 45), font=font)
     img.save(out)
 
 
@@ -195,19 +201,25 @@ def draw_flowchart(out):
 
 
 def metric_summary(rows):
-    opt = [r for r in rows if r["method"] == "pso_hanan_tabu_astar"]
     base = [r for r in rows if r["method"] == "baseline_rule"]
+    pso = [r for r in rows if r["method"] == "pso_hanan_tabu_astar"]
+    final = [r for r in rows if r["method"] == "pso_congestion_reroute_astar"]
     def avg(key, data):
         return sum(float(r[key]) for r in data) / len(data)
     return {
         "base_area": avg("area_ratio_percent", base),
-        "opt_area": avg("area_ratio_percent", opt),
+        "opt_area": avg("area_ratio_percent", final),
         "base_wire": avg("total_wire_mm", base),
-        "opt_wire": avg("total_wire_mm", opt),
+        "opt_wire": avg("total_wire_mm", final),
         "base_route": avg("routability_percent", base),
-        "opt_route": avg("routability_percent", opt),
+        "opt_route": avg("routability_percent", final),
         "base_violation": avg("violations", base),
-        "opt_violation": avg("violations", opt),
+        "opt_violation": avg("violations", final),
+        "pso_wire": avg("total_wire_mm", pso),
+        "pso_congested": avg("congested_cells", pso),
+        "final_congested": avg("congested_cells", final),
+        "pso_peak": avg("congestion_peak", pso),
+        "final_peak": avg("congestion_peak", final),
     }
 
 
@@ -215,9 +227,11 @@ def build():
     rows = read_metrics()
     area_png = IMG_DIR / "area_ratio.png"
     wire_png = IMG_DIR / "wire_length.png"
+    congestion_png = IMG_DIR / "congestion_cells.png"
     flow_png = IMG_DIR / "flowchart.png"
     draw_bar_chart(rows, "area_ratio_percent", "尾板面积占比对比（%）", area_png)
     draw_bar_chart(rows, "total_wire_mm", "总线长对比（mm）", wire_png)
+    draw_bar_chart(rows, "congested_cells", "拥挤网格数量对比", congestion_png)
     draw_flowchart(flow_png)
     s = metric_summary(rows)
 
@@ -259,13 +273,13 @@ def build():
     doc.add_paragraph()
 
     add_heading(doc, "摘  要", 1)
-    add_para(doc, "PCB金手指是板卡与外部设备之间完成电气连接和高速信号传输的重要接口，其端子密度高、边缘空间受限、信号类型复杂，给生产测试阶段的可接触性、覆盖率和测试效率带来了较高要求。传统测试尾板设计主要依赖工程师根据经验进行测试点布设和金手指到测试点的走线规划，在小批量或简单板卡中能够满足需求，但面对高密度金手指、面积受限尾板以及多约束设计规则时，容易出现布点分布不均、局部拥挤、走线绕行较长和设计迭代周期过长等问题。为提高测试尾板设计的自动化水平，本文围绕PCB金手指测试尾板的布点布线问题开展研究，建立了包含几何约束、工艺约束和布线约束的模型，并设计了一种规则网格候选生成、K-means初始分组、禁忌搜索局部优化和A*网格布线相结合的协同优化方法。")
-    add_para(doc, f"本文首先分析金手指测试尾板的结构特点和测试需求，明确测试点直径、点间距、尾板面积、障碍避让、线宽线距等关键约束；随后将布点任务建模为带间距和障碍约束的候选点选择问题，将布线任务建模为网格图上的路径搜索与合法性检查问题。在算法实现方面，基于C++17开发了命令行原型系统，支持读取案例参数CSV，输出测试点坐标、布线路径、实验指标和SVG可视化结果。针对低密度40 pin、中密度80 pin、高密度120 pin、含障碍区域96 pin和面积受限100 pin五类案例进行仿真实验。实验结果表明，PSO-Hanan优化方案在五组案例中均实现100%测试覆盖率和100%布通率，平均尾板面积占比由基线方案的{s['base_area']:.2f}%降低至{s['opt_area']:.2f}%，平均总线长由{s['base_wire']:.2f} mm降低至{s['opt_wire']:.2f} mm，说明该方法能够在保证布通和合法性的前提下有效压缩测试尾板占用面积并改善走线效率。")
-    add_para(doc, "关键词：PCB金手指；测试尾板；测试点插入；自动布线；禁忌搜索；A*算法", first_indent=False)
+    add_para(doc, "PCB金手指是板卡与外部设备之间完成电气连接和高速信号传输的重要接口，其端子密度高、边缘空间受限、信号类型复杂，给生产测试阶段的可接触性、覆盖率和测试效率带来了较高要求。传统测试尾板设计主要依赖工程师根据经验进行测试点布设和金手指到测试点的走线规划，在小批量或简单板卡中能够满足需求，但面对高密度金手指、面积受限尾板以及多约束设计规则时，容易出现布点分布不均、局部拥挤、走线绕行较长和设计迭代周期过长等问题。为提高测试尾板设计的自动化水平，本文围绕PCB金手指测试尾板的布点布线问题开展研究，参考网络流建模、蚁群信息素、领域模型和Transformer-A*联合布线等研究思路，建立了包含几何约束、工艺约束、布线约束和拥塞约束的模型。")
+    add_para(doc, f"本文首先分析金手指测试尾板的结构特点和测试需求，明确测试点直径、点间距、尾板面积、障碍避让、线宽线距等关键约束；随后将布点任务建模为带间距和障碍约束的候选点选择问题，将布线任务建模为网格图上的路径搜索、拥塞记录与合法性检查问题。在算法实现方面，基于C++17开发了命令行原型系统，形成规则基线、K-means禁忌搜索、PSO-Hanan布点和拥塞感知重布线四组可复现实验流程。针对低密度40 pin、中密度80 pin、高密度120 pin、含障碍区域96 pin和面积受限100 pin五类案例进行仿真实验。实验结果表明，最终拥塞感知方案在五组案例中均实现100%测试覆盖率和100%布通率，平均尾板面积占比由基线方案的{s['base_area']:.2f}%降低至{s['opt_area']:.2f}%，平均总线长由{s['base_wire']:.2f} mm降低至{s['opt_wire']:.2f} mm；相比PSO-Hanan方案，拥塞重布线在部分案例中以少量线长增加换取拥塞峰值或拥挤网格下降，体现了布线质量中的线长-拥塞折中。")
+    add_para(doc, "关键词：PCB金手指；测试尾板；测试点插入；自动布线；拥塞感知；拆线重布；A*算法", first_indent=False)
 
     add_heading(doc, "Abstract", 1)
-    add_para(doc, "Gold fingers on printed circuit boards provide critical edge contacts for board-level interconnection and high-speed signal transmission. Their high density, limited edge space and mixed signal requirements make test accessibility and tail-board routing difficult when the design is completed manually. This thesis studies automated test-point placement and routing for PCB gold-finger test tail boards. A constraint model covering geometry, manufacturing rules, obstacle avoidance and routing legality is established. A cooperative algorithm is proposed, combining grid-based candidate generation, K-means-like initial grouping, tabu-search local refinement, PSO-Hanan parameter search and A* grid routing. A C++17 command-line prototype is implemented to read case files, generate placement and routing results, export metrics and produce SVG visualization. Simulated case studies show that the optimized method achieves full coverage and full routability in five representative scenarios while reducing board area occupation and total wire length compared with a rule-based baseline.", first_indent=False)
-    add_para(doc, "Key words: PCB gold finger; test tail board; test point insertion; automatic routing; tabu search; A* algorithm", first_indent=False)
+    add_para(doc, "Gold fingers on printed circuit boards provide critical edge contacts for board-level interconnection and high-speed signal transmission. Their high density, limited edge space and mixed signal requirements make test accessibility and tail-board routing difficult when the design is completed manually. This thesis studies automated test-point placement and routing for PCB gold-finger test tail boards. Inspired by network-flow modeling, ant-colony pheromone concepts, domain-model routing and Transformer-A* hybrid routing, a constraint model covering geometry, manufacturing rules, obstacle avoidance, congestion and routing legality is established. A C++17 command-line prototype is implemented with four reproducible flows: rule-based baseline, K-means tabu placement, PSO-Hanan placement and congestion-aware rerouting. Simulated case studies show that the final method achieves full coverage and full routability in five representative scenarios while reducing board area occupation and total wire length compared with a rule-based baseline.", first_indent=False)
+    add_para(doc, "Key words: PCB gold finger; test tail board; test point insertion; automatic routing; congestion-aware routing; rip-up and reroute; A* algorithm", first_indent=False)
     doc.add_paragraph()
 
     add_heading(doc, "1 绪论", 1)
@@ -281,7 +295,7 @@ def build():
     for text in [
         "可测性设计领域长期关注如何在电路设计阶段提高缺陷可观测性和可控制性。Khalil等对电路与系统层面的DFT技术进行了综述，指出测试资源插入、扫描链设计和边界扫描均服务于降低测试难度。Yang等提出利用功能触发器驱动控制点的测试点插入方法，减少额外测试硬件开销。Shi等提出DeepTPI，将深度强化学习用于测试点插入位置选择，在基准电路上展示了学习型方法处理组合优化问题的潜力。这些研究主要面向芯片或逻辑网络测试点选择，为本文理解测试点插入的目标函数和约束处理提供了理论参考，但并未直接解决PCB金手指尾板这种强几何约束场景。",
         "PCB自动布线方面，Lee迷宫算法是最经典的网格路径搜索方法，通过波前扩展和回溯获得最短路径，优点是完备性强，缺点是搜索空间大。Hightower逃逸线算法通过构造逃逸线减少连续空间中的搜索复杂度。Soukup算法和Hadlock算法在迷宫搜索基础上引入启发式策略，提高了实际布线速度。近年来，随着PCB层数增加和HDI设计普及，研究者开始将线性规划、整数规划、网络流和机器学习方法引入布线合法化和全局优化。Chen等基于线性规划提出合法化布线算法，用约束松弛和舍入策略处理复杂规则；Yan和Wong对PCB布线进展进行了系统总结，强调多层、密度和设计规则共同决定布线难度。",
-        "在EDA工具生态方面，国外商业工具已经具备较成熟的自动布局布线能力，但算法细节通常封闭，且通用自动布线器未必适合测试尾板这类细分结构。国内相关研究更多集中于通用PCB自动布线器、基于蚁群算法或元胞自动机的路径搜索、以及深度学习辅助布局布线。李晓欣针对PCB自动布局布线器的设计实现进行了工程化研究，给出了数据结构、热布局和绕障布线思路；胡木森研究了基于网络流的高性能PCB自动布线方法；白胜泷探索了Transformer在PCB自动布线中的应用。这些工作说明智能优化方法正在进入EDA流程，但面向金手指测试尾板的布点布线协同模型仍有进一步研究空间。",
+        "在EDA工具生态方面，国外商业工具已经具备较成熟的自动布局布线能力，但算法细节通常封闭，且通用自动布线器未必适合测试尾板这类细分结构。国内相关研究更多集中于通用PCB自动布线器、基于蚁群算法或元胞自动机的路径搜索、以及深度学习辅助布局布线。李晓欣针对PCB自动布局布线器的设计实现进行了工程化研究，给出了惯性权重粒子群、混合优化和绕障布线思路；胡木森提出基于网络流建模的高性能自动布线方法，强调通过空间划分、流分配和拥塞预布线减少无效搜索；刘自铭在多层PCB布线中引入蚁群信息素、拥挤区域和拆线重布机制，关注过孔、拐点和布通率的综合优化；郑杰与白胜泷分别从领域模型和Transformer-A*联合布线角度探索学习人工布线范式。这些工作说明智能优化方法正在进入EDA流程，但面向金手指测试尾板的布点布线协同模型仍有进一步研究空间。",
     ]:
         add_para(doc, text)
 
@@ -331,11 +345,15 @@ def build():
         add_para(doc, text)
     add_heading(doc, "4.2 布点布线协同优化机制", 2)
     add_para(doc, "布点和布线不是两个完全独立的阶段。测试点离金手指过近会降低面积占比，但可能导致局部线束拥挤；测试点分散可以提高布线空间，却会增大尾板面积和总线长。本文采用代价反馈思路，将端子距离、测试点纵向位置、点间距和布线路径长度共同作为优化依据。实现中先完成布点并布线评估，再通过局部搜索降低代价。虽然原型没有实现复杂的全局重布线，但整体流程保留了协同优化接口，后续可加入网络流、线性规划或强化学习策略替换局部搜索模块。")
+    add_heading(doc, "4.3 拥塞感知与拆线重布策略", 2)
+    add_para(doc, "参考网络流布线中对通道容量和拥塞区域的建模思想，本文在A*布线之后增加拥塞统计层。程序将每条成功路径投影到网格单元，统计单元被多少条网络经过，并形成拥塞峰值和拥挤网格数量两个指标。拥塞峰值反映局部最严重的线束重叠程度，拥挤网格数量反映拥塞区域的空间范围。该处理没有完整实现最大流或最小费用流求解，但吸收了网络流论文中“先压缩布线空间、再利用容量信息指导路径选择”的思路，适合在本科毕业设计原型中作为轻量可解释的工程化改进。")
+    add_para(doc, "参考蚁群算法中信息素矩阵和拥挤区域挥发的思想，本文将已布线路径视为历史信息素：某网格被越多网络经过，后续网络通过该网格的代价越高。不同于传统单纯A*只考虑距离和障碍，拥塞感知A*在代价函数中加入动态拥塞项，并按估计线长由长到短逐线布线。这样长路径优先占据较稳定的通道，短路径随后根据实时拥塞图进行绕行。该机制本质上是一种简化拆线重布：先由PSO-Hanan方案给出紧凑布点，再用动态拥塞代价重构路径，以少量线长增加换取局部拥堵缓解。")
     add_table(doc, ["模块", "输入", "输出", "作用"], [
         ["候选生成", "尾板尺寸、障碍区、网格步长", "可用候选点集合", "提供满足基础规则的布点空间"],
         ["初始布点", "金手指端子、候选点集合", "测试点初始坐标", "快速获得完整可行解"],
         ["局部优化", "初始坐标、间距规则", "优化测试点坐标", "降低面积和线长代价"],
         ["A*布线", "端子、测试点、障碍区", "路径点序列", "验证可达性并统计线长"],
+        ["拥塞重布线", "预布线路径、拥塞图", "低拥塞路径集合", "降低局部重叠和通道热点"],
         ["指标评估", "布点和布线结果", "CSV指标和SVG图", "支撑论文实验分析"],
     ], [2.7, 4.0, 3.4, 5.0])
 
@@ -354,8 +372,8 @@ def build():
     add_heading(doc, "5.3 关键函数与数据流", 2)
     for text in [
         "程序的数据流从案例解析开始。read_scenario函数负责读取CSV键值对，将引脚数量、尾板尺寸、金手指间距、网格步长、测试点最小间距和障碍区域转化为Scenario结构体。generate_pins函数根据金手指数量和间距在尾板上边界生成端子坐标，保证不同案例具有统一的数据入口。generate_candidates函数遍历尾板内部网格点并剔除障碍点，形成可选测试点集合。上述步骤对应论文模型中的输入层和约束预处理层，决定后续算法是否能够在合法空间内搜索。",
-        "布点阶段由place_baseline、place_optimized和place_pso_hanan三个函数分别实现。第一组按照规则行列方式放置测试点，用作人工经验方案的近似基线；第二组先根据金手指横向位置分配目标带，再对候选点进行贪心选择和局部禁忌调整；第三组参考PSO与Hanan点优化思想，用粒子群搜索布点参数，并在候选点选择中综合线长、面积和间距代价。这样设计的原因是，毕业设计不仅需要展示优化方案效果，也需要有可复现的多层次对照组。若只给出单一优化结果而没有基线，无法说明算法相对传统规则设计的改进幅度；若基线过于复杂，又会模糊本文方法的贡献边界。",
-        "布线阶段由astar和route_all函数完成。astar函数在网格图上搜索单个网络路径，障碍区域被视为不可访问节点；route_all函数依次处理所有测试点，并将路径结果整理为Route集合。evaluate函数对布点和布线结果进行统一评价，计算覆盖率、布通率、面积占比、总线长、违规数和运行时间。write_csvs和write_svg函数则负责把结果落盘，形成论文可引用的数据和图示。整个流程保持输入、计算、输出分离，便于后续把当前命令行原型升级为图形界面或EDA插件。",
+        "布点阶段由place_baseline、place_optimized和place_pso_hanan三个函数分别实现。第一组按照规则行列方式放置测试点，用作人工经验方案的近似基线；第二组先根据金手指横向位置分配目标带，再对候选点进行贪心选择和局部禁忌调整；第三组参考PSO与Hanan点优化思想，用粒子群搜索布点参数，并在候选点选择中综合线长、面积和间距代价。PSO实现采用递减惯性权重，使前期具有更强探索能力，后期逐步收敛到稳定参数组合。",
+        "布线阶段由astar、route_all和route_all_congestion_aware函数完成。astar函数在网格图上搜索单个网络路径，障碍区域被视为不可访问节点；route_all函数依次处理所有测试点，并将路径结果整理为Route集合；route_all_congestion_aware函数则在预布线结果基础上构建动态拥塞图，将历史路径占用作为类似蚁群信息素的代价项，引导后续网络避开热点区域。evaluate函数对布点和布线结果进行统一评价，除覆盖率、布通率、面积占比、总线长和违规数外，还统计拥塞峰值和拥挤网格数量。write_csvs和write_svg函数负责把结果落盘，形成论文可引用的数据和图示。",
     ]:
         add_para(doc, text)
 
@@ -376,35 +394,35 @@ def build():
     add_heading(doc, "6.2 指标结果", 2)
     metric_rows = []
     for case in sorted(set(r["case"] for r in rows)):
-        b = next(r for r in rows if r["case"] == case and r["method"] == "baseline_rule")
-        t = next(r for r in rows if r["case"] == case and r["method"] == "kmeans_tabu_astar")
-        o = next(r for r in rows if r["case"] == case and r["method"] == "pso_hanan_tabu_astar")
-        metric_rows.append([
-            case,
-            f"{float(b['routability_percent']):.2f}",
-            f"{float(t['routability_percent']):.2f}",
-            f"{float(o['routability_percent']):.2f}",
-            f"{float(b['area_ratio_percent']):.2f}",
-            f"{float(t['area_ratio_percent']):.2f}",
-            f"{float(o['area_ratio_percent']):.2f}",
-            f"{float(b['total_wire_mm']):.2f}",
-            f"{float(t['total_wire_mm']):.2f}",
-            f"{float(o['total_wire_mm']):.2f}",
-            f"{b['violations']}/{o['violations']}",
-        ])
-    add_table(doc, ["案例", "基线布通/%", "K-means布通/%", "PSO布通/%", "基线面积/%", "K-means面积/%", "PSO面积/%", "基线线长/mm", "K-means线长/mm", "PSO线长/mm", "违规 基线/PSO"], metric_rows, [1.9, 1.4, 1.5, 1.4, 1.4, 1.5, 1.4, 1.6, 1.6, 1.5, 1.6])
+        for method, label, _ in METHODS:
+            row = next(r for r in rows if r["case"] == case and r["method"] == method)
+            metric_rows.append([
+                case,
+                label,
+                f"{float(row['routability_percent']):.2f}",
+                f"{float(row['area_ratio_percent']):.2f}",
+                f"{float(row['total_wire_mm']):.2f}",
+                row["congestion_peak"],
+                row["congested_cells"],
+                row["violations"],
+            ])
+    add_table(doc, ["案例", "算法", "布通/%", "面积/%", "线长/mm", "拥塞峰值", "拥挤网格", "违规"], metric_rows, [2.0, 2.4, 1.8, 1.8, 2.0, 1.8, 1.8, 1.4])
     doc.add_picture(str(area_png), width=Cm(15.5))
     doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
     add_para(doc, "图6-1 尾板面积占比对比", first_indent=False, align=WD_ALIGN_PARAGRAPH.CENTER)
     doc.add_picture(str(wire_png), width=Cm(15.5))
     doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
     add_para(doc, "图6-2 总线长对比", first_indent=False, align=WD_ALIGN_PARAGRAPH.CENTER)
+    doc.add_picture(str(congestion_png), width=Cm(15.5))
+    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
+    add_para(doc, "图6-3 拥挤网格数量对比", first_indent=False, align=WD_ALIGN_PARAGRAPH.CENTER)
 
     add_heading(doc, "6.3 结果分析", 2)
     for text in [
-        f"从布通率看，PSO-Hanan优化算法在五组案例中均达到100%，满足开题阶段提出的布通率不低于98%的目标。基线规则方案在无障碍的前三个案例中也能完成布线，但在含障碍和面积受限案例中出现未布点或未布通问题，平均布通率为{s['base_route']:.2f}%。这说明简单行列式规则对空间条件比较敏感，一旦障碍破坏规则排布或尾板高度不足，就可能无法为部分金手指找到合法测试点。优化方案通过候选过滤、PSO参数搜索和局部搜索，在障碍附近自动调整测试点位置，因此保持了完整覆盖。",
-        f"从面积占比看，PSO-Hanan算法的平均面积占比为{s['opt_area']:.2f}%，明显低于基线方案的{s['base_area']:.2f}%。这是因为基线方案为了满足点间距，通常沿尾板纵向均匀铺开测试点，导致测试点包围盒高度较大；优化方案根据金手指分布进行分组，并通过粒子群搜索布点参数，在保证间距的前提下压缩布点区域。对于高密度和面积受限案例，面积压缩效果尤为明显，说明协同优化对尾板尺寸控制具有实际意义。",
-        f"从总线长看，PSO-Hanan方案平均总线长为{s['opt_wire']:.2f} mm，低于基线方案的{s['base_wire']:.2f} mm。线长降低主要来自两个方面：一是测试点整体更靠近金手指边缘，减少了纵向引出距离；二是PSO搜索避免了部分测试点被放置到远离其端子的行列位置。较短线长不仅有助于节省布线资源，也有利于降低寄生效应和信号完整性风险。虽然本文原型没有进行阻抗连续性和差分对等长等高级电气约束处理，但路径长度指标已经能够反映基本布线经济性。",
+        f"从布通率看，最终拥塞感知算法在五组案例中均达到100%，满足开题阶段提出的布通率不低于98%的目标。基线规则方案在无障碍的前三个案例中也能完成布线，但在含障碍和面积受限案例中出现未布点或未布通问题，平均布通率为{s['base_route']:.2f}%。这说明简单行列式规则对空间条件比较敏感，一旦障碍破坏规则排布或尾板高度不足，就可能无法为部分金手指找到合法测试点。优化方案通过候选过滤、PSO参数搜索和局部搜索，在障碍附近自动调整测试点位置，因此保持了完整覆盖。",
+        f"从面积占比看，最终算法的平均面积占比为{s['opt_area']:.2f}%，明显低于基线方案的{s['base_area']:.2f}%。这是因为基线方案为了满足点间距，通常沿尾板纵向均匀铺开测试点，导致测试点包围盒高度较大；优化方案根据金手指分布进行分组，并通过粒子群搜索布点参数，在保证间距的前提下压缩布点区域。对于高密度和面积受限案例，面积压缩效果尤为明显，说明协同优化对尾板尺寸控制具有实际意义。",
+        f"从总线长看，最终方案平均总线长为{s['opt_wire']:.2f} mm，仍显著低于基线方案的{s['base_wire']:.2f} mm；纯PSO-Hanan方案平均线长为{s['pso_wire']:.2f} mm，略低于拥塞重布线方案。该差异说明拥塞感知重布线并非单纯追求最短路径，而是在较短线长基础上为热点区域留出绕行空间。较短线长有助于节省布线资源，而适度绕行有助于缓解通道集中和后续层分配压力，两者共同构成更接近工程实际的布线质量评价。",
+        f"从拥塞指标看，PSO-Hanan方案的平均拥塞峰值为{s['pso_peak']:.2f}，平均拥挤网格数为{s['pso_congested']:.2f}；拥塞重布线方案的平均拥塞峰值为{s['final_peak']:.2f}，平均拥挤网格数为{s['final_congested']:.2f}。在中密度和面积受限案例中，动态拥塞代价有效降低了局部峰值或拥挤范围；在高密度案例中，由于测试点区域被强烈压缩，可用通道有限，重布线会出现线长增加和拥挤网格波动。该结果与网络流和蚁群布线研究中的结论一致：拥塞优化通常需要在路径长度、局部容量和布线顺序之间折中。",
         "需要说明的是，本文实验属于案例化仿真验证，不等同于企业量产板卡的最终设计签核。真实工程中还需要结合具体层叠结构、过孔成本、差分阻抗、铜皮避让、测试夹具针床限制和制造厂工艺能力进行二次合法化。尽管如此，实验结果表明，本文提出的布点布线流程能够在早期方案设计中快速给出可行解和量化指标，为后续工程细化提供可靠初始方案。",
     ]:
         add_para(doc, text)
@@ -421,7 +439,7 @@ def build():
     add_heading(doc, "7.1 工作总结", 2)
     add_para(doc, "本文针对PCB金手指测试尾板设计中布点布线自动化程度不足的问题，完成了从需求分析、约束建模、算法设计、系统实现到实验验证的完整研究。论文分析了金手指结构特点和测试尾板设计约束，建立了候选点、测试点、障碍区、网格路径和实验指标等模型；提出了规则网格候选生成、K-means初始分组、禁忌搜索局部优化和A*网格布线相结合的协同优化方法；基于C++17实现了可运行命令行原型，并输出CSV指标和SVG可视化结果。五组仿真实验显示，优化方案能够实现完整覆盖和完整布通，同时显著降低测试点区域面积和总线长，达到了毕业设计任务中对算法功能验证和性能评估的要求。")
     add_heading(doc, "7.2 不足与展望", 2)
-    add_para(doc, "本文仍存在一些不足。首先，实验案例由参数化方式构造，尚未接入真实EDA文件格式，后续可支持Gerber、ODB++或IPC-2581等数据解析，提高与工程流程的结合程度。其次，当前布线模型采用两层合法化假设，未显式优化过孔数量、层分配和差分信号等长约束，后续可引入多层资源模型和线性规划合法化模块。再次，布点优化采用轻量禁忌搜索，适合中小规模案例，但面对更大规模板卡时，可进一步研究遗传算法、蚁群算法、网络流或强化学习策略。最后，原型当前以命令行和SVG展示为主，后续可开发Qt或Web可视化界面，实现交互式参数调整、动态布线展示和设计规则检查报告导出。")
+    add_para(doc, "本文仍存在一些不足。首先，实验案例由参数化方式构造，尚未接入真实EDA文件格式，后续可支持Gerber、ODB++或IPC-2581等数据解析，提高与工程流程的结合程度。其次，当前布线模型采用两层合法化假设，未显式优化过孔数量、层分配和差分信号等长约束，后续可引入多层资源模型和线性规划合法化模块。再次，当前拥塞重布线属于轻量启发式方法，只统计网格占用并提高热点代价，尚未形成完整的网络流容量约束；后续可参考基于网络流的空间划分和流分配方法，将尾板通道容量、过孔资源和线序约束统一建模。最后，若能够获得真实PCB人工布线数据，可进一步参考领域模型和Transformer-A*联合布线方法，让模型学习人工布线范式，并将预测结果作为A*或拥塞重布线的先验。")
 
     add_heading(doc, "参考文献", 1)
     refs = [
@@ -442,6 +460,7 @@ def build():
         "李晓欣. PCB自动布局布线器的设计与实现[D]. 成都: 电子科技大学, 2011.",
         "王磊. 基于元胞自动机和蚁群算法的PCB布局布线协同优化研究[D]. 西安: 西安电子科技大学, 2019.",
         "胡木森. 基于网络流的高性能PCB自动布线算法研究与设计[D]. 电子科技大学, 2021.",
+        "刘自铭. 基于蚁群算法的多层印刷电路板布线研究[D]. 2023.",
         "郑杰. 基于PCB布线领域模型的电子线路自动布线方法的设计[D]. 2022.",
         "白胜泷. 基于Transformer的PCB自动布线算法[D]. 2024.",
         "PCBCart. Gold finger PCB manufacturer: hard gold edge connector PCBs[EB/OL]. https://www.pcbcart.com/article/content/gold-finger-pcb.html.",

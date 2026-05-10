@@ -62,6 +62,8 @@ struct Metrics {
     double area_ratio_percent = 0.0;
     double total_wire_mm = 0.0;
     int violations = 0;
+    int congestion_peak = 0;
+    int congested_cells = 0;
     double runtime_ms = 0.0;
 };
 
@@ -73,6 +75,7 @@ struct Solution {
     Metrics metrics;
     Metrics baseline_metrics;
     Metrics tabu_metrics;
+    Metrics pso_metrics;
 };
 
 } // namespace pcb

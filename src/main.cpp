@@ -28,6 +28,9 @@ struct Cell {
     int y = 0;
 };
 
+using CellKey = std::pair<int, int>;
+using CongestionMap = std::map<CellKey, int>;
+
 double dist(Point a, Point b) {
     const double dx = a.x - b.x;
     const double dy = a.y - b.y;
@@ -340,7 +343,8 @@ Point to_point(Cell c, double grid) {
     return {c.x * grid, c.y * grid};
 }
 
-std::vector<Cell> astar(const Scenario &s, Point start, Point goal, const std::set<std::pair<int, int>> &occupied) {
+std::vector<Cell> astar(const Scenario &s, Point start, Point goal, const std::set<CellKey> &occupied,
+                        const CongestionMap *history = nullptr, double congestion_weight = 0.0) {
     const double grid = s.rules.grid_mm;
     const int max_x = static_cast<int>(std::round(s.rules.width_mm / grid));
     const int max_y = static_cast<int>(std::round(s.rules.tail_height_mm / grid));
@@ -388,7 +392,12 @@ std::vector<Cell> astar(const Scenario &s, Point start, Point goal, const std::s
         for (auto &d : dirs) {
             Cell nb{c.x + d[0], c.y + d[1]};
             if (blocked(nb)) continue;
-            const double ng = n.g + 1.0 + (nb.y == 0 ? 0.2 : 0.0);
+            double congestion_cost = 0.0;
+            if (history) {
+                auto it = history->find(key(nb));
+                if (it != history->end()) congestion_cost = congestion_weight * it->second;
+            }
+            const double ng = n.g + 1.0 + (nb.y == 0 ? 0.2 : 0.0) + congestion_cost;
             auto nk = key(nb);
             if (!best.count(nk) || ng < best[nk]) {
                 best[nk] = ng;
@@ -400,11 +409,12 @@ std::vector<Cell> astar(const Scenario &s, Point start, Point goal, const std::s
     return {};
 }
 
-std::vector<Route> route_all(const Scenario &s, const std::vector<Pin> &pins, const std::vector<TestPoint> &points) {
+std::vector<Route> route_all(const Scenario &s, const std::vector<Pin> &pins, const std::vector<TestPoint> &points,
+                             const CongestionMap *history = nullptr, double congestion_weight = 0.0) {
     std::vector<Route> routes;
     // The prototype models a two-layer test tail board. Obstacles are hard blockages, while
     // already-routed nets are allowed to cross after layer assignment/legalization.
-    const std::set<std::pair<int, int>> occupied;
+    const std::set<CellKey> occupied;
     auto ordered = points;
     std::sort(ordered.begin(), ordered.end(), [&](const TestPoint &a, const TestPoint &b) {
         const auto pa = pins[static_cast<std::size_t>(a.pin_id - 1)].pos;
@@ -413,7 +423,7 @@ std::vector<Route> route_all(const Scenario &s, const std::vector<Pin> &pins, co
     });
     for (const auto &tp : ordered) {
         const Pin &pin = pins[static_cast<std::size_t>(tp.pin_id - 1)];
-        auto cells = astar(s, pin.pos, tp.pos, occupied);
+        auto cells = astar(s, pin.pos, tp.pos, occupied, history, congestion_weight);
         Route r;
         r.pin_id = tp.pin_id;
         r.success = !cells.empty();
@@ -422,6 +432,53 @@ std::vector<Route> route_all(const Scenario &s, const std::vector<Pin> &pins, co
                 r.path.push_back(to_point(c, s.rules.grid_mm));
             }
             for (std::size_t i = 1; i < r.path.size(); ++i) r.length_mm += dist(r.path[i - 1], r.path[i]);
+        }
+        routes.push_back(r);
+    }
+    std::sort(routes.begin(), routes.end(), [](const Route &a, const Route &b) { return a.pin_id < b.pin_id; });
+    return routes;
+}
+
+CongestionMap build_congestion_map(const std::vector<Route> &routes, double grid) {
+    CongestionMap congestion;
+    for (const auto &route : routes) {
+        if (!route.success) continue;
+        std::set<CellKey> route_cells;
+        for (const auto &p : route.path) {
+            Cell c = to_cell(p, grid);
+            route_cells.insert({c.x, c.y});
+        }
+        for (const auto &cell : route_cells) ++congestion[cell];
+    }
+    return congestion;
+}
+
+std::vector<Route> route_all_congestion_aware(const Scenario &s, const std::vector<Pin> &pins,
+                                              const std::vector<TestPoint> &points) {
+    std::vector<Route> routes;
+    CongestionMap dynamic_history;
+    auto ordered = points;
+    std::sort(ordered.begin(), ordered.end(), [&](const TestPoint &a, const TestPoint &b) {
+        const auto pa = pins[static_cast<std::size_t>(a.pin_id - 1)].pos;
+        const auto pb = pins[static_cast<std::size_t>(b.pin_id - 1)].pos;
+        return dist(pa, a.pos) > dist(pb, b.pos);
+    });
+
+    const std::set<CellKey> occupied;
+    for (const auto &tp : ordered) {
+        const Pin &pin = pins[static_cast<std::size_t>(tp.pin_id - 1)];
+        auto cells = astar(s, pin.pos, tp.pos, occupied, &dynamic_history, 2.0);
+        Route r;
+        r.pin_id = tp.pin_id;
+        r.success = !cells.empty();
+        if (r.success) {
+            std::set<CellKey> route_cells;
+            for (auto c : cells) {
+                route_cells.insert({c.x, c.y});
+                r.path.push_back(to_point(c, s.rules.grid_mm));
+            }
+            for (std::size_t i = 1; i < r.path.size(); ++i) r.length_mm += dist(r.path[i - 1], r.path[i]);
+            for (const auto &cell : route_cells) ++dynamic_history[cell];
         }
         routes.push_back(r);
     }
@@ -451,6 +508,11 @@ Metrics evaluate(const Scenario &s, const std::string &method, int pin_count, co
         m.area_ratio_percent = 100.0 * m.used_area_mm2 / (s.rules.width_mm * s.rules.tail_height_mm);
     }
     for (const auto &r : routes) m.total_wire_mm += r.length_mm;
+    auto congestion = build_congestion_map(routes, s.rules.grid_mm);
+    for (const auto &entry : congestion) {
+        m.congestion_peak = std::max(m.congestion_peak, entry.second);
+        if (entry.second > 1) ++m.congested_cells;
+    }
     m.violations += pin_count - m.placed_count;
     m.violations += m.placed_count - m.routed_count;
     for (std::size_t i = 0; i < points.size(); ++i) {
@@ -488,12 +550,12 @@ void write_csvs(const Solution &sol, const std::string &out) {
     }
     {
         std::ofstream f(out + "/metrics.csv");
-        f << "method,pin_count,placed_count,routed_count,coverage_percent,routability_percent,used_area_mm2,area_ratio_percent,total_wire_mm,violations,runtime_ms\n";
-        for (const auto &m : {sol.baseline_metrics, sol.tabu_metrics, sol.metrics}) {
+        f << "method,pin_count,placed_count,routed_count,coverage_percent,routability_percent,used_area_mm2,area_ratio_percent,total_wire_mm,violations,congestion_peak,congested_cells,runtime_ms\n";
+        for (const auto &m : {sol.baseline_metrics, sol.tabu_metrics, sol.pso_metrics, sol.metrics}) {
             f << m.method << "," << m.pin_count << "," << m.placed_count << "," << m.routed_count << ","
               << std::fixed << std::setprecision(2) << m.coverage_percent << "," << m.routability_percent << ","
               << m.used_area_mm2 << "," << m.area_ratio_percent << "," << m.total_wire_mm << "," << m.violations
-              << "," << m.runtime_ms << "\n";
+              << "," << m.congestion_peak << "," << m.congested_cells << "," << m.runtime_ms << "\n";
         }
     }
 }
@@ -549,11 +611,18 @@ Solution solve(const Scenario &scenario) {
     sol.tabu_metrics = evaluate(scenario, "kmeans_tabu_astar", scenario.pin_count, tabu_points, tabu_routes, tabu_ms);
 
     auto p0 = std::chrono::steady_clock::now();
-    sol.points = place_pso_hanan(scenario, sol.pins);
-    sol.routes = route_all(scenario, sol.pins, sol.points);
+    auto pso_points = place_pso_hanan(scenario, sol.pins);
+    auto pso_routes = route_all(scenario, sol.pins, pso_points);
     auto p1 = std::chrono::steady_clock::now();
     const double pso_ms = std::chrono::duration<double, std::milli>(p1 - p0).count();
-    sol.metrics = evaluate(scenario, "pso_hanan_tabu_astar", scenario.pin_count, sol.points, sol.routes, pso_ms);
+    sol.pso_metrics = evaluate(scenario, "pso_hanan_tabu_astar", scenario.pin_count, pso_points, pso_routes, pso_ms);
+
+    auto c0 = std::chrono::steady_clock::now();
+    sol.points = pso_points;
+    sol.routes = route_all_congestion_aware(scenario, sol.pins, sol.points);
+    auto c1 = std::chrono::steady_clock::now();
+    const double congestion_ms = pso_ms + std::chrono::duration<double, std::milli>(c1 - c0).count();
+    sol.metrics = evaluate(scenario, "pso_congestion_reroute_astar", scenario.pin_count, sol.points, sol.routes, congestion_ms);
     return sol;
 }
 
