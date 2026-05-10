@@ -1,0 +1,11 @@
+name,case_01_low_density_40pin
+pins,40
+width_mm,90
+tail_height_mm,42
+pin_pitch_mm,1.27
+grid_mm,1
+min_testpoint_spacing_mm,2
+line_spacing_mm,0.5
+max_iterations,80
+obstacles,none
+

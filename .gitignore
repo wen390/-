@@ -1,0 +1,17 @@
+.DS_Store
+.venv/
+build/
+tools/LibreOffice.app/
+pcb_tail_router
+
+# Generated document QA artifacts
+results/thesis_render*/
+results/lo_test/
+results/cmake_case_*/
+results/thesis_assets/*.png
+
+# Keep experiment CSV/SVG outputs, ignore transient logs.
+*.log
+
+# Keep generated thesis DOCX, do not publish downloaded reference PDFs.
+paper/**/*.pdf

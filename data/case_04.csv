@@ -1,0 +1,11 @@
+name,case_04_obstacle_area_96pin
+pins,96
+width_mm,105
+tail_height_mm,52
+pin_pitch_mm,0.75
+grid_mm,1
+min_testpoint_spacing_mm,2
+line_spacing_mm,0.5
+max_iterations,120
+obstacles,36:13:48:28;66:18:78:34
+

@@ -1,0 +1,11 @@
+name,case_03_high_density_120pin
+pins,120
+width_mm,110
+tail_height_mm,54
+pin_pitch_mm,0.65
+grid_mm,1
+min_testpoint_spacing_mm,2
+line_spacing_mm,0.5
+max_iterations,120
+obstacles,none
+

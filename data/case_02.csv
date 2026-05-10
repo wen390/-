@@ -1,0 +1,11 @@
+name,case_02_medium_density_80pin
+pins,80
+width_mm,96
+tail_height_mm,48
+pin_pitch_mm,0.8
+grid_mm,1
+min_testpoint_spacing_mm,2
+line_spacing_mm,0.5
+max_iterations,100
+obstacles,none
+

@@ -1,0 +1,4 @@
+method,pin_count,placed_count,routed_count,coverage_percent,routability_percent,used_area_mm2,area_ratio_percent,total_wire_mm,violations,runtime_ms
+baseline_rule,100,89,89,89.00,89.00,2050.50,65.81,1827.00,11,1.03
+kmeans_tabu_astar,100,100,100,100.00,100.00,814.00,26.12,1059.00,0,10.01
+pso_hanan_tabu_astar,100,100,100,100.00,100.00,760.00,24.39,951.00,0,1013.97
