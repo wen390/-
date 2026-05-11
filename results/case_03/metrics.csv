@@ -1,5 +1,5 @@
 method,pin_count,placed_count,routed_count,coverage_percent,routability_percent,used_area_mm2,area_ratio_percent,total_wire_mm,violations,congestion_peak,congested_cells,runtime_ms
-baseline_rule,120,120,120,100.00,100.00,3742.10,63.00,3240.00,0,2,1076,1.25
-kmeans_tabu_astar,120,120,120,100.00,100.00,910.00,15.32,1247.00,0,5,381,28.99
-pso_hanan_tabu_astar,120,120,120,100.00,100.00,890.00,14.98,1128.00,0,3,390,3473.41
-pso_congestion_reroute_astar,120,120,120,100.00,100.00,890.00,14.98,1210.00,0,3,416,3474.83
+baseline_rule,120,120,120,100.00,100.00,3742.10,63.00,3240.00,0,2,1076,1.21
+kmeans_tabu_astar,120,120,120,100.00,100.00,910.00,15.32,1247.00,0,5,381,28.81
+pso_hanan_tabu_astar,120,120,120,100.00,100.00,890.00,14.98,1128.00,0,3,390,3355.01
+pso_congestion_reroute_astar,120,120,120,100.00,100.00,890.00,14.98,1210.00,0,3,416,3356.43

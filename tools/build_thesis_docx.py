@@ -27,6 +27,20 @@ METHODS = [
 ]
 
 
+def cjk_font(size):
+    for candidate in [
+        "/System/Library/Fonts/STHeiti Medium.ttc",
+        "/System/Library/Fonts/STHeiti Light.ttc",
+        "/System/Library/Fonts/Supplemental/Songti.ttc",
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+        "/Library/Fonts/Arial Unicode.ttf",
+    ]:
+        path = Path(candidate)
+        if path.exists():
+            return ImageFont.truetype(str(path), size)
+    return ImageFont.load_default()
+
+
 def font(size=12, bold=False):
     f = Pt(size)
     return f
@@ -85,10 +99,18 @@ def shade_cell(cell, fill):
     tc_pr.append(shd)
 
 
+def repeat_table_header(row):
+    tr_pr = row._tr.get_or_add_trPr()
+    tbl_header = OxmlElement("w:tblHeader")
+    tbl_header.set(qn("w:val"), "true")
+    tr_pr.append(tbl_header)
+
+
 def add_table(doc, headers, rows, widths=None):
     table = doc.add_table(rows=1, cols=len(headers))
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.style = "Table Grid"
+    repeat_table_header(table.rows[0])
     for i, h in enumerate(headers):
         set_cell_text(table.rows[0].cells[i], h, True)
         shade_cell(table.rows[0].cells[i], "EAF2F8")
@@ -132,12 +154,9 @@ def draw_bar_chart(rows, metric, title, out):
     w, h = 1100, 620
     img = Image.new("RGB", (w, h), "white")
     d = ImageDraw.Draw(img)
-    try:
-        title_font = ImageFont.truetype("/System/Library/Fonts/PingFang.ttc", 34)
-        font = ImageFont.truetype("/System/Library/Fonts/PingFang.ttc", 22)
-        small = ImageFont.truetype("/System/Library/Fonts/PingFang.ttc", 18)
-    except Exception:
-        title_font = font = small = None
+    title_font = cjk_font(34)
+    font = cjk_font(22)
+    small = cjk_font(16)
     d.text((60, 28), title, fill=(30, 60, 90), font=title_font)
     grouped = [[r for r in rows if r["method"] == method] for method, _, _ in METHODS]
     max_val = max(float(r[metric]) for r in rows) * 1.12
@@ -152,10 +171,10 @@ def draw_bar_chart(rows, metric, title, out):
             color = METHODS[j][2]
             val = float(row[metric])
             bh = (bottom - top) * val / max_val
-            x1 = cx - 55 + j * 28
-            x2 = x1 + 22
+            x1 = cx - 62 + j * 32
+            x2 = x1 + 24
             d.rectangle((x1, bottom - bh, x2, bottom), fill=color)
-            d.text((x1 - 8, bottom - bh - 24), f"{val:.1f}", fill=(45, 45, 45), font=small)
+            d.text((x1 - 6, bottom - bh - 22 - (j % 2) * 18), f"{val:.1f}", fill=(45, 45, 45), font=small)
         label = values[-1]["case"].replace("case_", "")
         d.text((cx - 40, bottom + 14), label, fill=(45, 45, 45), font=small)
     legend_x, legend_y = 660, 38
@@ -172,11 +191,8 @@ def draw_flowchart(out):
     w, h = 1200, 520
     img = Image.new("RGB", (w, h), "white")
     d = ImageDraw.Draw(img)
-    try:
-        f = ImageFont.truetype("/System/Library/Fonts/PingFang.ttc", 24)
-        ft = ImageFont.truetype("/System/Library/Fonts/PingFang.ttc", 30)
-    except Exception:
-        f = ft = None
+    f = cjk_font(24)
+    ft = cjk_font(30)
     boxes = [
         ("案例输入\n金手指/尾板/障碍", 50, 160),
         ("规则库\n间距/网格/面积", 270, 160),
@@ -300,7 +316,18 @@ def build():
         add_para(doc, text)
 
     add_heading(doc, "1.3 研究内容与论文结构", 2)
-    add_para(doc, "本文围绕面向PCB金手指的测试尾板自动化设计展开，主要完成以下工作：一是梳理金手指测试尾板的结构、工艺和测试需求，建立布点布线设计规则库；二是提出测试点候选生成、初始布点、局部优化和布线合法化的一体化流程；三是基于C++17实现命令行算法原型，形成可复现实验数据和可视化结果；四是构造五类典型案例，与规则基线方案进行对比，分析算法在覆盖率、布通率、面积占比、线长和违规数方面的效果。论文第二章介绍理论基础和约束建模，第三章给出布点算法，第四章给出布线与协同优化方法，第五章介绍系统实现，第六章分析实验结果，第七章总结全文并展望后续工作。")
+    add_para(doc, "本文围绕面向PCB金手指的测试尾板自动化设计展开，研究内容与毕业设计任务书的六项要求保持一致：完成文献调研和开题基础工作，建立金手指测试尾板案例与约束模型，设计布点布线算法，完成C++核心代码实现，开展人工/规则基线与优化算法的量化对比，并在实验数据基础上完成毕业论文撰写。具体而言，本文首先梳理金手指测试尾板的结构、工艺和测试需求，建立布点布线设计规则库；随后提出测试点候选生成、初始布点、局部优化、A*布线和拥塞重布线的一体化流程；再基于C++17实现命令行算法原型，形成可复现实验数据和可视化结果；最后构造五类典型案例，与规则基线方案进行对比，分析算法在覆盖率、布通率、面积占比、线长、拥塞和违规数方面的效果。论文第二章介绍理论基础和约束建模，第三章给出布点算法，第四章给出布线与协同优化方法，第五章介绍系统实现，第六章分析实验结果，第七章总结全文并展望后续工作。")
+
+    add_heading(doc, "1.4 任务书要求与完成情况", 2)
+    add_para(doc, "为保证论文内容能够直接对应毕业设计主要任务和验收要求，本文将任务书要求归纳为六项，并在论文、代码和实验结果中逐项落实。需要说明的是，当前未获得企业原始PCB设计文件，因此第二项中的案例获取采用“真实应用场景参数化构造”的方式完成，即依据金手指数量、板边间距、测试点间距、尾板尺寸和障碍区等工程约束构造案例化仿真数据，论文中不声称实验数据来自企业量产板卡。")
+    add_table(doc, ["序号", "任务书主要要求", "本文完成方式", "对应成果"], [
+        ["1", "查阅不少于15篇文献，其中近五年英文文献不少于3篇，完成开题基础工作", "围绕DFT测试点插入、PCB自动布线、网络流、蚁群算法、领域模型和Transformer-A*布线整理国内外研究现状", "参考文献23篇；近五年英文文献包括DeepTPI、NS-Place、Legalized Routing、Integration综述等"],
+        ["2", "获取真实应用场景下PCB金手指测试尾板设计案例，并确定布点布线约束", "在无企业原始文件条件下，构造40 pin、80 pin、120 pin、含障碍96 pin和面积受限100 pin五类案例，并给出尾板尺寸、间距、障碍和网格规则", "data/case_01.csv至case_05.csv；第2章约束表；第6章案例表"],
+        ["3", "设计面向PCB金手指测试尾板的布点布线算法，给出算法框架和设计过程", "形成规则网格候选生成、K-means初始分组、禁忌搜索、PSO-Hanan布点、A*布线和拥塞感知拆线重布流程", "第3章布点算法；第4章布线算法；图3-1流程图"],
+        ["4", "基于C++实现算法核心代码，确保代码可运行且注释清晰", "采用C++17命令行原型实现案例解析、布点、布线、指标统计和SVG输出，同时提供CMakeLists.txt与Makefile", "include/pcb_tail_router.hpp；src/main.cpp；README.md；make run-all验证"],
+        ["5", "开展对比实验，与人工布点布线在面积、布通率、合法性等指标上量化对比", "以规则行列式方案近似人工经验基线，并与K-means、PSO-Hanan、拥塞重布线三类优化方案对比", "results/case_*/metrics.csv；第6章指标表和三张对比图"],
+        ["6", "分析实验数据并完成不少于1.2万字毕业论文", "根据最新程序输出重建论文数据表、图表和结论，围绕布通率、面积、线长、拥塞和违规数进行分析", "完成稿正文超过1.2万字；参考文献格式统一；DOCX渲染检查通过"],
+    ], [1.2, 4.2, 6.0, 4.8])
 
     add_heading(doc, "2 相关理论与约束建模", 1)
     add_heading(doc, "2.1 PCB金手指与测试尾板结构", 2)
@@ -438,6 +465,7 @@ def build():
     add_heading(doc, "7 总结与展望", 1)
     add_heading(doc, "7.1 工作总结", 2)
     add_para(doc, "本文针对PCB金手指测试尾板设计中布点布线自动化程度不足的问题，完成了从需求分析、约束建模、算法设计、系统实现到实验验证的完整研究。论文分析了金手指结构特点和测试尾板设计约束，建立了候选点、测试点、障碍区、网格路径和实验指标等模型；提出了规则网格候选生成、K-means初始分组、禁忌搜索局部优化和A*网格布线相结合的协同优化方法；基于C++17实现了可运行命令行原型，并输出CSV指标和SVG可视化结果。五组仿真实验显示，优化方案能够实现完整覆盖和完整布通，同时显著降低测试点区域面积和总线长，达到了毕业设计任务中对算法功能验证和性能评估的要求。")
+    add_para(doc, "对照任务书六项主要要求，本文完成情况如下：第一，完成了不少于15篇文献的调研，并补充近五年英文文献作为算法发展趋势依据；第二，在缺少企业原始PCB文件的条件下，构建了符合真实应用约束的五组金手指测试尾板案例，并明确测试点间距、障碍避让、网格步长和评价指标；第三，完成了布点布线算法框架设计，覆盖候选点生成、聚类分组、禁忌局部搜索、PSO-Hanan布点、A*搜索和拥塞重布线；第四，完成C++17核心代码实现，程序可通过Makefile或CMake构建并批量生成结果；第五，完成规则基线与三类优化方案的对比实验，并从布通率、面积、线长、拥塞和违规数进行量化分析；第六，基于最新实验数据完成论文正文、图表和参考文献整理，正文字数达到本科毕业论文要求。")
     add_heading(doc, "7.2 不足与展望", 2)
     add_para(doc, "本文仍存在一些不足。首先，实验案例由参数化方式构造，尚未接入真实EDA文件格式，后续可支持Gerber、ODB++或IPC-2581等数据解析，提高与工程流程的结合程度。其次，当前布线模型采用两层合法化假设，未显式优化过孔数量、层分配和差分信号等长约束，后续可引入多层资源模型和线性规划合法化模块。再次，当前拥塞重布线属于轻量启发式方法，只统计网格占用并提高热点代价，尚未形成完整的网络流容量约束；后续可参考基于网络流的空间划分和流分配方法，将尾板通道容量、过孔资源和线序约束统一建模。最后，若能够获得真实PCB人工布线数据，可进一步参考领域模型和Transformer-A*联合布线方法，让模型学习人工布线范式，并将预测结果作为A*或拥塞重布线的先验。")
 
