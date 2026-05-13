@@ -7,7 +7,7 @@ from pathlib import Path
 from docx import Document
 from docx.enum.section import WD_SECTION
 from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING, WD_TAB_ALIGNMENT, WD_TAB_LEADER
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
@@ -64,7 +64,8 @@ def add_para(doc, text="", style=None, align=None, first_indent=True):
     p = doc.add_paragraph(style=style)
     if align is not None:
         p.alignment = align
-    p.paragraph_format.line_spacing = 1.35
+    p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+    p.paragraph_format.line_spacing = Pt(20)
     p.paragraph_format.space_after = Pt(6)
     if first_indent and style is None and text:
         p.paragraph_format.first_line_indent = Cm(0.74)
@@ -75,11 +76,51 @@ def add_para(doc, text="", style=None, align=None, first_indent=True):
 
 def add_heading(doc, text, level=1):
     p = doc.add_heading("", level=level)
-    p.paragraph_format.space_before = Pt(12 if level == 1 else 8)
-    p.paragraph_format.space_after = Pt(6)
-    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    p.paragraph_format.space_before = Pt(10)
+    p.paragraph_format.space_after = Pt(10)
+    p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+    p.paragraph_format.line_spacing = Pt(20)
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER if level == 1 else WD_ALIGN_PARAGRAPH.LEFT
     r = p.add_run(text)
-    set_run_font(r, 16 if level == 1 else 14 if level == 2 else 12, True, (31, 78, 121), "黑体", "Arial")
+    west = "Times New Roman" if text == "Abstract" else "Arial"
+    east = "Times New Roman" if text == "Abstract" else "黑体"
+    size = 18 if level == 1 else 16 if level == 2 else 14
+    set_run_font(r, size, True, (0, 0, 0), east, west)
+    return p
+
+
+def add_caption(doc, text, above=False):
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+    p.paragraph_format.line_spacing = Pt(20)
+    p.paragraph_format.space_before = Pt(3 if above else 0)
+    p.paragraph_format.space_after = Pt(4 if above else 8)
+    r = p.add_run(text)
+    set_run_font(r, 12, False, None, "宋体", "Times New Roman")
+    return p
+
+
+def add_keywords(doc, label, text, english=False):
+    p = doc.add_paragraph()
+    p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+    p.paragraph_format.line_spacing = Pt(20)
+    p.paragraph_format.space_after = Pt(6)
+    r = p.add_run(label)
+    set_run_font(r, 14, True, None, "Times New Roman" if english else "黑体", "Times New Roman")
+    r = p.add_run(text)
+    set_run_font(r, 12, False, None, "Times New Roman" if english else "宋体", "Times New Roman")
+    return p
+
+
+def add_centered_picture(doc, path, width):
+    doc.add_picture(str(path), width=width)
+    p = doc.paragraphs[-1]
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
+    p.paragraph_format.line_spacing = 1
+    p.paragraph_format.space_before = Pt(3)
+    p.paragraph_format.space_after = Pt(3)
     return p
 
 
@@ -127,15 +168,127 @@ def add_table(doc, headers, rows, widths=None):
     return table
 
 
-def new_page(doc):
-    sec = doc.add_section(WD_SECTION.NEW_PAGE)
+def configure_section(sec):
     sec.page_width = Cm(21)
     sec.page_height = Cm(29.7)
     sec.top_margin = Cm(2.5)
-    sec.bottom_margin = Cm(2.3)
-    sec.left_margin = Cm(2.6)
-    sec.right_margin = Cm(2.4)
+    sec.bottom_margin = Cm(2)
+    sec.left_margin = Cm(2.5)
+    sec.right_margin = Cm(2)
+    sec.header_distance = Cm(2.6)
+    sec.footer_distance = Cm(2.4)
     return sec
+
+
+def add_page_field(paragraph):
+    run = paragraph.add_run()
+    fld_begin = OxmlElement("w:fldChar")
+    fld_begin.set(qn("w:fldCharType"), "begin")
+    instr = OxmlElement("w:instrText")
+    instr.set(qn("xml:space"), "preserve")
+    instr.text = "PAGE"
+    fld_sep = OxmlElement("w:fldChar")
+    fld_sep.set(qn("w:fldCharType"), "separate")
+    text = OxmlElement("w:t")
+    text.text = "1"
+    fld_end = OxmlElement("w:fldChar")
+    fld_end.set(qn("w:fldCharType"), "end")
+    run._r.extend([fld_begin, instr, fld_sep, text, fld_end])
+    set_run_font(run, 10.5, False, None, "宋体", "Times New Roman")
+
+
+def set_page_number_format(section, fmt="decimal", start=1):
+    sect_pr = section._sectPr
+    for node in sect_pr.findall(qn("w:pgNumType")):
+        sect_pr.remove(node)
+    pg = OxmlElement("w:pgNumType")
+    pg.set(qn("w:fmt"), fmt)
+    pg.set(qn("w:start"), str(start))
+    sect_pr.append(pg)
+
+
+def apply_header_footer(section, header_text=None, page_fmt="decimal", start=1):
+    section.header.is_linked_to_previous = False
+    section.footer.is_linked_to_previous = False
+    section.header.paragraphs[0].text = ""
+    section.footer.paragraphs[0].text = ""
+    if header_text:
+        hp = section.header.paragraphs[0]
+        hp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r = hp.add_run(header_text)
+        set_run_font(r, 10.5, False, None, "宋体", "Times New Roman")
+    fp = section.footer.paragraphs[0]
+    fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    add_page_field(fp)
+    set_page_number_format(section, page_fmt, start)
+
+
+def new_page(doc, header_text=None, page_fmt="decimal", start=1, with_page_number=True):
+    sec = doc.add_section(WD_SECTION.NEW_PAGE)
+    configure_section(sec)
+    if with_page_number:
+        apply_header_footer(sec, header_text, page_fmt, start)
+    else:
+        sec.header.is_linked_to_previous = False
+        sec.footer.is_linked_to_previous = False
+        sec.header.paragraphs[0].text = ""
+        sec.footer.paragraphs[0].text = ""
+    return sec
+
+
+def add_toc(doc):
+    add_heading(doc, "目  录", 1)
+    entries = [
+        (0, "第1章 绪论", "1"),
+        (1, "1.1 研究背景", "1"),
+        (1, "1.2 国内外研究现状", "1"),
+        (1, "1.3 研究内容与论文结构", "2"),
+        (1, "1.4 任务书要求与完成情况", "3"),
+        (0, "第2章 相关理论与约束建模", "5"),
+        (1, "2.1 PCB金手指与测试尾板结构", "5"),
+        (1, "2.2 布点布线数学模型", "5"),
+        (0, "第3章 测试点布点算法设计", "7"),
+        (1, "3.1 候选点生成", "7"),
+        (1, "3.2 K-means初始分组", "7"),
+        (1, "3.3 禁忌搜索局部优化", "7"),
+        (0, "第4章 布线算法与协同优化", "9"),
+        (1, "4.1 A*网格布线", "9"),
+        (1, "4.2 布点布线协同优化机制", "9"),
+        (1, "4.3 拥塞感知与拆线重布策略", "9"),
+        (0, "第5章 系统实现", "11"),
+        (1, "5.1 工程结构与运行方式", "11"),
+        (1, "5.2 输出文件说明", "11"),
+        (1, "5.3 关键函数与数据流", "12"),
+        (0, "第6章 实验结果与分析", "13"),
+        (1, "6.1 实验设置", "13"),
+        (1, "6.2 指标结果", "13"),
+        (1, "6.3 结果分析", "16"),
+        (1, "6.4 参数与工程适用性讨论", "17"),
+        (0, "第7章 总结与展望", "19"),
+        (1, "7.1 工作总结", "19"),
+        (1, "7.2 不足与展望", "19"),
+        (0, "参考文献", "20"),
+        (0, "致谢", "22"),
+    ]
+    for level, title, page in entries:
+        p = doc.add_paragraph()
+        p.paragraph_format.left_indent = Cm(0.74 * level)
+        p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+        p.paragraph_format.line_spacing = Pt(20)
+        p.paragraph_format.space_after = Pt(0)
+        p.paragraph_format.tab_stops.add_tab_stop(Cm(15.6), WD_TAB_ALIGNMENT.RIGHT, WD_TAB_LEADER.DOTS)
+        r = p.add_run(f"{title}\t{page}")
+        set_run_font(r, 12, False, None, "宋体", "Times New Roman")
+
+
+def add_reference_para(doc, text):
+    p = doc.add_paragraph()
+    p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+    p.paragraph_format.line_spacing = Pt(16)
+    p.paragraph_format.space_after = Pt(2)
+    r = p.add_run(text)
+    set_run_font(r, 10.5, False, None, "宋体", "Times New Roman")
+    return p
 
 
 def read_metrics():
@@ -253,32 +406,33 @@ def build():
 
     doc = Document()
     sec = doc.sections[0]
-    sec.page_width = Cm(21)
-    sec.page_height = Cm(29.7)
-    sec.top_margin = Cm(2.5)
-    sec.bottom_margin = Cm(2.3)
-    sec.left_margin = Cm(2.6)
-    sec.right_margin = Cm(2.4)
+    configure_section(sec)
+    sec.header.paragraphs[0].text = ""
+    sec.footer.paragraphs[0].text = ""
 
     styles = doc.styles
     styles["Normal"].font.name = "Times New Roman"
     styles["Normal"]._element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
     styles["Normal"].font.size = Pt(12)
+    styles["Normal"].paragraph_format.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+    styles["Normal"].paragraph_format.line_spacing = Pt(20)
 
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.space_before = Pt(60)
     p.paragraph_format.space_after = Pt(22)
-    r = p.add_run("本科毕业设计（论文）")
-    set_run_font(r, 22, True, (0, 0, 0), "黑体", "Arial")
+    r = p.add_run("武汉理工大学毕业设计（论文）")
+    set_run_font(r, 26, True, (0, 0, 0), "华文中宋", "Times New Roman")
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.space_before = Pt(38)
+    p.paragraph_format.space_after = Pt(50)
     r = p.add_run("面向PCB金手指的测试尾板布点布线设计")
-    set_run_font(r, 20, True, (31, 78, 121), "黑体", "Arial")
+    set_run_font(r, 22, True, (0, 0, 0), "黑体", "Arial")
     doc.add_paragraph()
     meta = [
-        ("学院", "信息工程学院"),
-        ("专业", "集成电路设计与集成系统"),
-        ("班级", "集成电路2201"),
+        ("学院（系）", "信息工程学院"),
+        ("专业班级", "集成电路设计与集成系统  集成电路2201"),
         ("学生姓名", "刘政"),
         ("指导教师", "徐宁"),
         ("完成日期", "2026年5月"),
@@ -286,19 +440,38 @@ def build():
     t = add_table(doc, ["项目", "内容"], meta, [4.2, 8.2])
     for row in t.rows:
         row.height = Cm(0.9)
-    doc.add_paragraph()
+    new_page(doc, with_page_number=False)
+    add_heading(doc, "学位论文原创性声明", 1)
+    for text in [
+        "本人郑重声明：所呈交的论文是本人在导师的指导下独立进行研究所取得的研究成果。除了文中特别加以标注引用的内容外，本论文不包括任何其他个人或集体已经发表或撰写的成果作品。本人完全意识到本声明的法律后果由本人承担。",
+        "作者签名：                         年     月     日",
+    ]:
+        add_para(doc, text)
+    add_heading(doc, "学位论文版权使用授权书", 1)
+    for text in [
+        "本学位论文作者完全了解学校有关保障、使用学位论文的规定，同意学校保留并向有关学位论文管理部门或机构送交论文的复印件和电子版，允许论文被查阅和借阅。本人授权省级优秀学士论文评选机构将本学位论文的全部或部分内容编入有关数据进行检索，可以采用影印、缩印或扫描等复制手段保存和汇编本学位论文。",
+        "本学位论文属于：1、保密□，在        年解密后适用本授权书；2、不保密□。",
+        "作者签名：                         年     月     日",
+        "导师签名：                         年     月     日",
+    ]:
+        add_para(doc, text)
+
+    new_page(doc, page_fmt="lowerRoman", start=1)
 
     add_heading(doc, "摘  要", 1)
     add_para(doc, "PCB金手指是板卡与外部设备之间完成电气连接和高速信号传输的重要接口，其端子密度高、边缘空间受限、信号类型复杂，给生产测试阶段的可接触性、覆盖率和测试效率带来了较高要求。传统测试尾板设计主要依赖工程师根据经验进行测试点布设和金手指到测试点的走线规划，在小批量或简单板卡中能够满足需求，但面对高密度金手指、面积受限尾板以及多约束设计规则时，容易出现布点分布不均、局部拥挤、走线绕行较长和设计迭代周期过长等问题。为提高测试尾板设计的自动化水平，本文围绕PCB金手指测试尾板的布点布线问题开展研究，参考网络流建模、蚁群信息素、领域模型和Transformer-A*联合布线等研究思路，建立了包含几何约束、工艺约束、布线约束和拥塞约束的模型。")
     add_para(doc, f"本文首先分析金手指测试尾板的结构特点和测试需求，明确测试点直径、点间距、尾板面积、障碍避让、线宽线距等关键约束；随后将布点任务建模为带间距和障碍约束的候选点选择问题，将布线任务建模为网格图上的路径搜索、拥塞记录与合法性检查问题。在算法实现方面，基于C++17开发了命令行原型系统，形成规则基线、K-means禁忌搜索、PSO-Hanan布点和拥塞感知重布线四组可复现实验流程。针对低密度40 pin、中密度80 pin、高密度120 pin、含障碍区域96 pin和面积受限100 pin五类案例进行仿真实验。实验结果表明，最终拥塞感知方案在五组案例中均实现100%测试覆盖率和100%布通率，平均尾板面积占比由基线方案的{s['base_area']:.2f}%降低至{s['opt_area']:.2f}%，平均总线长由{s['base_wire']:.2f} mm降低至{s['opt_wire']:.2f} mm；相比PSO-Hanan方案，拥塞重布线在部分案例中以少量线长增加换取拥塞峰值或拥挤网格下降，体现了布线质量中的线长-拥塞折中。")
-    add_para(doc, "关键词：PCB金手指；测试尾板；测试点插入；自动布线；拥塞感知；拆线重布；A*算法", first_indent=False)
+    add_keywords(doc, "关键词：", "PCB金手指；测试尾板；测试点插入；自动布线；拥塞感知；拆线重布；A*算法")
 
     add_heading(doc, "Abstract", 1)
     add_para(doc, "Gold fingers on printed circuit boards provide critical edge contacts for board-level interconnection and high-speed signal transmission. Their high density, limited edge space and mixed signal requirements make test accessibility and tail-board routing difficult when the design is completed manually. This thesis studies automated test-point placement and routing for PCB gold-finger test tail boards. Inspired by network-flow modeling, ant-colony pheromone concepts, domain-model routing and Transformer-A* hybrid routing, a constraint model covering geometry, manufacturing rules, obstacle avoidance, congestion and routing legality is established. A C++17 command-line prototype is implemented with four reproducible flows: rule-based baseline, K-means tabu placement, PSO-Hanan placement and congestion-aware rerouting. Simulated case studies show that the final method achieves full coverage and full routability in five representative scenarios while reducing board area occupation and total wire length compared with a rule-based baseline.", first_indent=False)
-    add_para(doc, "Key words: PCB gold finger; test tail board; test point insertion; automatic routing; congestion-aware routing; rip-up and reroute; A* algorithm", first_indent=False)
-    doc.add_paragraph()
+    add_keywords(doc, "Key Words: ", "PCB gold finger; test tail board; test point insertion; automatic routing; congestion-aware routing; rip-up and reroute; A* algorithm", english=True)
 
-    add_heading(doc, "1 绪论", 1)
+    new_page(doc, page_fmt="lowerRoman", start=3)
+    add_toc(doc)
+    new_page(doc, header_text="武汉理工大学毕业设计（论文）", page_fmt="decimal", start=1)
+
+    add_heading(doc, "第1章 绪论", 1)
     add_heading(doc, "1.1 研究背景", 2)
     for text in [
         "印制电路板是电子系统的物理承载平台，承担器件安装、网络互连、信号完整性保障和热管理等多重功能。随着服务器、通信设备、工业控制和消费电子产品向高速化、小型化和高可靠性方向发展，PCB边缘连接器区域的金手指越来越常见。金手指通常采用硬金镀层，位于板边并与插槽、测试夹具或转接板接触，其导通质量会直接影响整机连接可靠性。由于金手指区域的接触端子间距小、数量多、信号速率高，若生产测试阶段不能高效覆盖全部网络，缺陷可能在后续装配或现场运行中暴露，造成返工成本和质量风险。",
@@ -320,22 +493,25 @@ def build():
 
     add_heading(doc, "1.4 任务书要求与完成情况", 2)
     add_para(doc, "为保证论文内容能够直接对应毕业设计主要任务和验收要求，本文将任务书要求归纳为六项，并在论文、代码和实验结果中逐项落实。需要说明的是，当前未获得企业原始PCB设计文件，因此第二项中的案例获取采用“真实应用场景参数化构造”的方式完成，即依据金手指数量、板边间距、测试点间距、尾板尺寸和障碍区等工程约束构造案例化仿真数据，论文中不声称实验数据来自企业量产板卡。")
+    add_caption(doc, "表1.1 任务书主要要求与完成情况", above=True)
     add_table(doc, ["序号", "任务书主要要求", "本文完成方式", "对应成果"], [
         ["1", "查阅不少于15篇文献，其中近五年英文文献不少于3篇，完成开题基础工作", "围绕DFT测试点插入、PCB自动布线、网络流、蚁群算法、领域模型和Transformer-A*布线整理国内外研究现状", "参考文献23篇；近五年英文文献包括DeepTPI、NS-Place、Legalized Routing、Integration综述等"],
         ["2", "获取真实应用场景下PCB金手指测试尾板设计案例，并确定布点布线约束", "在无企业原始文件条件下，构造40 pin、80 pin、120 pin、含障碍96 pin和面积受限100 pin五类案例，并给出尾板尺寸、间距、障碍和网格规则", "data/case_01.csv至case_05.csv；第2章约束表；第6章案例表"],
-        ["3", "设计面向PCB金手指测试尾板的布点布线算法，给出算法框架和设计过程", "形成规则网格候选生成、K-means初始分组、禁忌搜索、PSO-Hanan布点、A*布线和拥塞感知拆线重布流程", "第3章布点算法；第4章布线算法；图3-1流程图"],
+        ["3", "设计面向PCB金手指测试尾板的布点布线算法，给出算法框架和设计过程", "形成规则网格候选生成、K-means初始分组、禁忌搜索、PSO-Hanan布点、A*布线和拥塞感知拆线重布流程", "第3章布点算法；第4章布线算法；图3.1流程图"],
         ["4", "基于C++实现算法核心代码，确保代码可运行且注释清晰", "采用C++17命令行原型实现案例解析、布点、布线、指标统计和SVG输出，同时提供CMakeLists.txt与Makefile", "include/pcb_tail_router.hpp；src/main.cpp；README.md；make run-all验证"],
         ["5", "开展对比实验，与人工布点布线在面积、布通率、合法性等指标上量化对比", "以规则行列式方案近似人工经验基线，并与K-means、PSO-Hanan、拥塞重布线三类优化方案对比", "results/case_*/metrics.csv；第6章指标表和三张对比图"],
         ["6", "分析实验数据并完成不少于1.2万字毕业论文", "根据最新程序输出重建论文数据表、图表和结论，围绕布通率、面积、线长、拥塞和违规数进行分析", "完成稿正文超过1.2万字；参考文献格式统一；DOCX渲染检查通过"],
     ], [1.2, 4.2, 6.0, 4.8])
 
-    add_heading(doc, "2 相关理论与约束建模", 1)
+    doc.add_page_break()
+    add_heading(doc, "第2章 相关理论与约束建模", 1)
     add_heading(doc, "2.1 PCB金手指与测试尾板结构", 2)
     for text in [
         "PCB金手指通常分布在板边，端子形状为长条状镀金焊盘，按固定间距排列并与外部插槽接触。根据应用场景不同，金手指可能承载电源、地、高速差分信号、普通数字信号或控制信号。测试尾板设计需要将这些端子引出到便于探针接触的位置，同时尽量不改变被测板主体电气特性。尾板一般位于金手指外侧或延伸区域，其尺寸受夹具空间、加工板材和后续分板要求约束，不能无限扩展。",
         "测试点可采用通孔测试点、表面贴装测试点或专用测试焊盘。对于飞针测试和在线测试，测试点直径、相邻点中心距、边缘避让距离和探针接触角度都会影响测试稳定性。本文将测试点抽象为圆形接触区域，将金手指端子抽象为位于尾板上边界的一组起点，将尾板可用区域抽象为二维矩形，并用障碍矩形描述不可布点和不可走线区域。该抽象虽然简化了真实PCB中的焊盘形状、过孔和多层叠构，但足以支持算法原型验证和论文实验分析。",
     ]:
         add_para(doc, text)
+    add_caption(doc, "表2.1 布点布线约束参数", above=True)
     add_table(doc, ["约束类别", "参数", "本文取值/处理方式", "说明"], [
         ["几何约束", "尾板宽度与高度", "由案例CSV给定", "反映不同金手指密度和面积限制"],
         ["布点约束", "测试点最小间距", "1.8-2.0 mm", "保证探针接触和工艺可制造性"],
@@ -352,18 +528,19 @@ def build():
     ]:
         add_para(doc, text)
 
-    add_heading(doc, "3 测试点布点算法设计", 1)
+    doc.add_page_break()
+    add_heading(doc, "第3章 测试点布点算法设计", 1)
     add_heading(doc, "3.1 候选点生成", 2)
     add_para(doc, "候选点生成是布点算法的基础。本文根据尾板可用区域和网格步长生成规则网格点，随后删除落入障碍区域或距离障碍过近的点。规则网格的优点是实现简单、便于与制造规则对齐，也方便后续A*布线使用同一坐标系统。为了避免测试点靠近板边导致探针接触不稳定，候选点生成时保留一定边界余量；为了避免障碍边缘产生潜在工艺冲突，障碍矩形按照线距参数进行外扩后再进行过滤。")
     add_heading(doc, "3.2 K-means初始分组", 2)
     add_para(doc, "金手指端子呈线性排列，若直接逐点贪心选择最近候选点，容易在某些区域形成拥挤。本文借鉴K-means聚类思想，将金手指横向分布划分为若干簇，并为不同簇分配不同的目标纵向带。这样可以在保持端子到测试点距离较短的同时，使测试点沿尾板纵深方向展开，减少同一行测试点过密造成的间距冲突。由于端子坐标已经近似一维均匀分布，原型中采用基于横向位置的快速分组，不额外引入迭代聚类库，保证程序轻量可复现。")
     add_heading(doc, "3.3 禁忌搜索局部优化", 2)
     add_para(doc, "初始布点完成后，算法采用轻量禁忌搜索进行局部优化。对每个测试点，在其邻域候选点中寻找能够降低端子距离和纵向代价的位置，同时检查与其他测试点的最小间距。被替换掉的位置在短期内加入禁忌表，避免算法在相邻位置之间来回震荡。该策略没有追求严格全局最优，而是面向工程原型选择可解释、易实现且收敛较快的局部改良方式。实验表明，在五类案例中，该方法能够显著降低测试点包围盒面积，并保持100%布点覆盖。")
-    doc.add_picture(str(flow_png), width=Cm(15.5))
-    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    add_para(doc, "图3-1 布点布线协同优化流程", first_indent=False, align=WD_ALIGN_PARAGRAPH.CENTER)
+    add_centered_picture(doc, flow_png, Cm(15.5))
+    add_caption(doc, "图3.1 布点布线协同优化流程")
 
-    add_heading(doc, "4 布线算法与协同优化", 1)
+    doc.add_page_break()
+    add_heading(doc, "第4章 布线算法与协同优化", 1)
     add_heading(doc, "4.1 A*网格布线", 2)
     for text in [
         "A*算法是在Dijkstra最短路径算法基础上加入启发函数的图搜索算法。对于PCB尾板的网格布线，起点为金手指端子所在网格，终点为对应测试点网格，代价函数由已走路径长度和到目标点的曼哈顿距离估计组成。由于本文主要处理规则矩形区域和矩形障碍，曼哈顿距离能够较好地引导搜索方向，并明显减少无效扩展。算法搜索到终点后通过父节点表回溯路径，输出由网格点序列组成的布线路径。",
@@ -375,6 +552,7 @@ def build():
     add_heading(doc, "4.3 拥塞感知与拆线重布策略", 2)
     add_para(doc, "参考网络流布线中对通道容量和拥塞区域的建模思想，本文在A*布线之后增加拥塞统计层。程序将每条成功路径投影到网格单元，统计单元被多少条网络经过，并形成拥塞峰值和拥挤网格数量两个指标。拥塞峰值反映局部最严重的线束重叠程度，拥挤网格数量反映拥塞区域的空间范围。该处理没有完整实现最大流或最小费用流求解，但吸收了网络流论文中“先压缩布线空间、再利用容量信息指导路径选择”的思路，适合在本科毕业设计原型中作为轻量可解释的工程化改进。")
     add_para(doc, "参考蚁群算法中信息素矩阵和拥挤区域挥发的思想，本文将已布线路径视为历史信息素：某网格被越多网络经过，后续网络通过该网格的代价越高。不同于传统单纯A*只考虑距离和障碍，拥塞感知A*在代价函数中加入动态拥塞项，并按估计线长由长到短逐线布线。这样长路径优先占据较稳定的通道，短路径随后根据实时拥塞图进行绕行。该机制本质上是一种简化拆线重布：先由PSO-Hanan方案给出紧凑布点，再用动态拥塞代价重构路径，以少量线长增加换取局部拥堵缓解。")
+    add_caption(doc, "表4.1 算法模块输入输出关系", above=True)
     add_table(doc, ["模块", "输入", "输出", "作用"], [
         ["候选生成", "尾板尺寸、障碍区、网格步长", "可用候选点集合", "提供满足基础规则的布点空间"],
         ["初始布点", "金手指端子、候选点集合", "测试点初始坐标", "快速获得完整可行解"],
@@ -384,9 +562,11 @@ def build():
         ["指标评估", "布点和布线结果", "CSV指标和SVG图", "支撑论文实验分析"],
     ], [2.7, 4.0, 3.4, 5.0])
 
-    add_heading(doc, "5 系统实现", 1)
+    doc.add_page_break()
+    add_heading(doc, "第5章 系统实现", 1)
     add_heading(doc, "5.1 工程结构与运行方式", 2)
     add_para(doc, "算法原型采用C++17标准实现，未引入Qt等图形界面依赖，以命令行方式保证跨平台可构建和便于答辩演示。工程包含CMakeLists.txt和Makefile两种构建入口；在当前macOS环境中，由于未安装CMake，使用Apple clang和Makefile完成了实际编译验证。程序入口参数固定为“--case 案例文件 --out 输出目录”，案例文件采用简单CSV键值格式描述引脚数量、尾板尺寸、金手指间距、网格步长、最小测试点间距和障碍区域。")
+    add_caption(doc, "表5.1 工程目录与文件说明", above=True)
     add_table(doc, ["路径", "内容", "说明"], [
         ["include/pcb_tail_router.hpp", "核心数据结构", "定义Point、Rect、Scenario、TestPoint、Route、Metrics等模型"],
         ["src/main.cpp", "算法实现与命令行入口", "包含案例解析、布点、布线、指标统计和SVG输出"],
@@ -404,7 +584,8 @@ def build():
     ]:
         add_para(doc, text)
 
-    add_heading(doc, "6 实验结果与分析", 1)
+    doc.add_page_break()
+    add_heading(doc, "第6章 实验结果与分析", 1)
     add_heading(doc, "6.1 实验设置", 2)
     add_para(doc, "由于当前工作区未提供企业真实PCB设计文件，本文按照开题报告和阶段性报告确定的研究方向，构造五组具有代表性的案例进行仿真实验。案例一为40 pin低密度金手指，主要验证算法基本功能；案例二为80 pin中密度金手指，验证常规规模下的面积和线长优化；案例三为120 pin高密度金手指，验证端子密集时的布点能力；案例四加入两个矩形障碍区域，验证绕障能力；案例五压缩尾板面积并加入障碍，模拟面积受限场景。所有实验均由同一C++程序生成结果，未手工修改指标。")
     case_rows = []
@@ -417,6 +598,7 @@ def build():
             if len(a) == 2:
                 kv[a[0]] = a[1]
         case_rows.append([p.stem, kv.get("pins"), kv.get("width_mm"), kv.get("tail_height_mm"), kv.get("pin_pitch_mm"), kv.get("obstacles", "none")])
+    add_caption(doc, "表6.1 实验案例设置", above=True)
     add_table(doc, ["案例", "引脚数", "宽度/mm", "高度/mm", "间距/mm", "障碍设置"], case_rows, [2.6, 1.7, 2.0, 2.0, 2.0, 5.0])
     add_heading(doc, "6.2 指标结果", 2)
     metric_rows = []
@@ -433,16 +615,16 @@ def build():
                 row["congested_cells"],
                 row["violations"],
             ])
+    add_caption(doc, "表6.2 各案例算法指标对比", above=True)
     add_table(doc, ["案例", "算法", "布通/%", "面积/%", "线长/mm", "拥塞峰值", "拥挤网格", "违规"], metric_rows, [2.0, 2.4, 1.8, 1.8, 2.0, 1.8, 1.8, 1.4])
-    doc.add_picture(str(area_png), width=Cm(15.5))
-    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    add_para(doc, "图6-1 尾板面积占比对比", first_indent=False, align=WD_ALIGN_PARAGRAPH.CENTER)
-    doc.add_picture(str(wire_png), width=Cm(15.5))
-    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    add_para(doc, "图6-2 总线长对比", first_indent=False, align=WD_ALIGN_PARAGRAPH.CENTER)
-    doc.add_picture(str(congestion_png), width=Cm(15.5))
-    doc.paragraphs[-1].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    add_para(doc, "图6-3 拥挤网格数量对比", first_indent=False, align=WD_ALIGN_PARAGRAPH.CENTER)
+    doc.add_page_break()
+    add_centered_picture(doc, area_png, Cm(14.2))
+    add_caption(doc, "图6.1 尾板面积占比对比")
+    add_centered_picture(doc, wire_png, Cm(14.2))
+    add_caption(doc, "图6.2 总线长对比")
+    doc.add_page_break()
+    add_centered_picture(doc, congestion_png, Cm(14.2))
+    add_caption(doc, "图6.3 拥挤网格数量对比")
 
     add_heading(doc, "6.3 结果分析", 2)
     for text in [
@@ -462,13 +644,15 @@ def build():
     ]:
         add_para(doc, text)
 
-    add_heading(doc, "7 总结与展望", 1)
+    doc.add_page_break()
+    add_heading(doc, "第7章 总结与展望", 1)
     add_heading(doc, "7.1 工作总结", 2)
     add_para(doc, "本文针对PCB金手指测试尾板设计中布点布线自动化程度不足的问题，完成了从需求分析、约束建模、算法设计、系统实现到实验验证的完整研究。论文分析了金手指结构特点和测试尾板设计约束，建立了候选点、测试点、障碍区、网格路径和实验指标等模型；提出了规则网格候选生成、K-means初始分组、禁忌搜索局部优化和A*网格布线相结合的协同优化方法；基于C++17实现了可运行命令行原型，并输出CSV指标和SVG可视化结果。五组仿真实验显示，优化方案能够实现完整覆盖和完整布通，同时显著降低测试点区域面积和总线长，达到了毕业设计任务中对算法功能验证和性能评估的要求。")
     add_para(doc, "对照任务书六项主要要求，本文完成情况如下：第一，完成了不少于15篇文献的调研，并补充近五年英文文献作为算法发展趋势依据；第二，在缺少企业原始PCB文件的条件下，构建了符合真实应用约束的五组金手指测试尾板案例，并明确测试点间距、障碍避让、网格步长和评价指标；第三，完成了布点布线算法框架设计，覆盖候选点生成、聚类分组、禁忌局部搜索、PSO-Hanan布点、A*搜索和拥塞重布线；第四，完成C++17核心代码实现，程序可通过Makefile或CMake构建并批量生成结果；第五，完成规则基线与三类优化方案的对比实验，并从布通率、面积、线长、拥塞和违规数进行量化分析；第六，基于最新实验数据完成论文正文、图表和参考文献整理，正文字数达到本科毕业论文要求。")
     add_heading(doc, "7.2 不足与展望", 2)
     add_para(doc, "本文仍存在一些不足。首先，实验案例由参数化方式构造，尚未接入真实EDA文件格式，后续可支持Gerber、ODB++或IPC-2581等数据解析，提高与工程流程的结合程度。其次，当前布线模型采用两层合法化假设，未显式优化过孔数量、层分配和差分信号等长约束，后续可引入多层资源模型和线性规划合法化模块。再次，当前拥塞重布线属于轻量启发式方法，只统计网格占用并提高热点代价，尚未形成完整的网络流容量约束；后续可参考基于网络流的空间划分和流分配方法，将尾板通道容量、过孔资源和线序约束统一建模。最后，若能够获得真实PCB人工布线数据，可进一步参考领域模型和Transformer-A*联合布线方法，让模型学习人工布线范式，并将预测结果作为A*或拥塞重布线的先验。")
 
+    doc.add_page_break()
     add_heading(doc, "参考文献", 1)
     refs = [
         "KHALIL E H, EL-MAHLAWY M H, IBRAHIM F, et al. Design for testability of circuits and systems: an overview[C]//Proceedings of the 5th International Conference on Electrical Engineering. 2006.",
@@ -496,8 +680,9 @@ def build():
         "NexPCB. Design for testability: how to create easily testable PCBs[EB/OL]. https://www.nexpcb.com/blog/design-for-testability-dft.",
     ]
     for i, ref in enumerate(refs, 1):
-        add_para(doc, f"[{i}] {ref}", first_indent=False)
+        add_reference_para(doc, f"[{i}] {ref}")
 
+    doc.add_page_break()
     add_heading(doc, "致谢", 1)
     add_para(doc, "本课题从选题、资料调研、算法设计到论文撰写，得到了指导教师和同学的帮助。感谢指导教师在研究方向、技术路线和论文结构方面给予的指导，也感谢学院提供的学习环境和实验条件。通过本次毕业设计，作者进一步理解了PCB可测性设计、自动布点布线算法和工程化实现之间的联系，提升了独立分析问题、编写程序和整理技术文档的能力。")
 
