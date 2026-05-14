@@ -1,0 +1,14 @@
+# source_repo,mengstr/PCIeTestPCB
+# source_url,https://github.com/mengstr/PCIeTestPCB
+# source_pcb,data/kicad_public/PCIeTestPCB/PCIeTest.kicad_pcb
+# selected_footprint,matseng:PAD64-1.5_1.0
+name,kicad_pcie_test_dual_ww37
+pins,64
+width_mm,140.0
+tail_height_mm,35.52
+pin_pitch_mm,1.5
+grid_mm,1.0
+min_testpoint_spacing_mm,2.0
+line_spacing_mm,0.5
+max_iterations,100
+obstacles,47.6:11.4:65.8:19.5;86.8:7.1:106.4:14.9

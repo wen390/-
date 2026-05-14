@@ -1,0 +1,14 @@
+# source_repo,m1geo/Pi5_PCIe
+# source_url,https://github.com/m1geo/Pi5_PCIe
+# source_pcb,data/kicad_public/Pi5_PCIe/Pi5_PCIe.kicad_pcb
+# selected_footprint,10018783-11200TLF:AMPHENOL_10018783-11200TLF
+name,kicad_pi5_pcie_breakout
+pins,36
+width_mm,135.94
+tail_height_mm,32.0
+pin_pitch_mm,2.0
+grid_mm,1.0
+min_testpoint_spacing_mm,2.0
+line_spacing_mm,0.5
+max_iterations,100
+obstacles,59.8:9.0:78.8:16.0

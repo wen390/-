@@ -1,0 +1,14 @@
+# source_repo,m1geo/Pi5_PCIe
+# source_url,https://github.com/m1geo/Pi5_PCIe
+# source_pcb,data/kicad_public/Pi5_PCIe/Pi5_M2_Hat.kicad_pcb
+# selected_footprint,ngff:AMPHENOL_MDT420M03001
+name,kicad_pi5_m2_hat
+pins,69
+width_mm,125.92
+tail_height_mm,36.42
+pin_pitch_mm,2.54
+grid_mm,1.0
+min_testpoint_spacing_mm,2.0
+line_spacing_mm,0.5
+max_iterations,100
+obstacles,42.8:11.7:59.2:20.0;78.1:7.3:95.7:15.3

@@ -1,0 +1,14 @@
+# source_repo,Supercookiegaming/PCIe-Aux-Signal-Breakout
+# source_url,https://github.com/Supercookiegaming/PCIe-Aux-Signal-Breakout
+# source_pcb,data/kicad_public/PCIe-Aux-Signal-Breakout/KiCad/PCIe-Aux-Signal-Breakout/PCIe-Aux-Signal-Breakout.kicad_pcb
+# selected_footprint,PCIexpress:PCIexpress_x1
+name,kicad_pcie_aux_signal_breakout
+pins,36
+width_mm,88.8
+tail_height_mm,32.0
+pin_pitch_mm,1.0
+grid_mm,1.0
+min_testpoint_spacing_mm,1.8
+line_spacing_mm,0.5
+max_iterations,100
+obstacles,39.1:9.0:51.5:16.0

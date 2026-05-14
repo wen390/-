@@ -560,10 +560,11 @@ void write_csvs(const Solution &sol, const std::string &out) {
     }
 }
 
-void write_svg(const Solution &sol, const std::string &out) {
-    const auto &s = sol.scenario;
+void write_svg_method(const Scenario &s, const std::vector<Pin> &pins, const std::vector<TestPoint> &points,
+                      const std::vector<Route> &routes, const Metrics &metrics, const std::string &path,
+                      const std::string &stroke, const std::string &label) {
     const double scale = 8.0;
-    std::ofstream f(out + "/layout.svg");
+    std::ofstream f(path);
     f << "<svg xmlns='http://www.w3.org/2000/svg' width='" << s.rules.width_mm * scale
       << "' height='" << s.rules.tail_height_mm * scale << "' viewBox='0 0 " << s.rules.width_mm << " "
       << s.rules.tail_height_mm << "'>\n";
@@ -574,21 +575,36 @@ void write_svg(const Solution &sol, const std::string &out) {
         f << "<rect x='" << obs.x1 << "' y='" << obs.y1 << "' width='" << obs.x2 - obs.x1 << "' height='"
           << obs.y2 - obs.y1 << "' fill='#d7dee8' stroke='#6a7380' stroke-width='0.15'/>\n";
     }
-    for (const auto &r : sol.routes) {
+    for (const auto &r : routes) {
         if (!r.success || r.path.empty()) continue;
         f << "<polyline points='";
         for (const auto &p : r.path) f << p.x << "," << p.y << " ";
-        f << "' fill='none' stroke='#3578b8' stroke-width='0.22' opacity='0.65'/>\n";
+        f << "' fill='none' stroke='" << stroke << "' stroke-width='0.22' opacity='0.65'/>\n";
     }
-    for (const auto &pin : sol.pins) {
+    for (const auto &pin : pins) {
         f << "<circle cx='" << pin.pos.x << "' cy='" << pin.pos.y + 1.5 << "' r='0.35' fill='#9b6b00'/>\n";
     }
-    for (const auto &tp : sol.points) {
+    for (const auto &tp : points) {
         f << "<circle cx='" << tp.pos.x << "' cy='" << tp.pos.y << "' r='0.55' fill='#d33f49' stroke='#6b1018' stroke-width='0.12'/>\n";
     }
     f << "<text x='2' y='" << s.rules.tail_height_mm - 2 << "' font-size='2.0' fill='#333'>" << s.name
-      << " | routed " << sol.metrics.routed_count << "/" << sol.metrics.pin_count << "</text>\n";
+      << " | " << label << " | routed " << metrics.routed_count << "/" << metrics.pin_count
+      << " | area " << std::fixed << std::setprecision(2) << metrics.area_ratio_percent
+      << "% | violations " << metrics.violations << "</text>\n";
     f << "</svg>\n";
+}
+
+void write_svg(const Solution &sol, const std::string &out) {
+    write_svg_method(sol.scenario, sol.pins, sol.points, sol.routes, sol.metrics, out + "/layout.svg", "#3578b8",
+                     "pso_congestion_reroute_astar");
+    write_svg_method(sol.scenario, sol.pins, sol.baseline_points, sol.baseline_routes, sol.baseline_metrics,
+                     out + "/layout_baseline_rule.svg", "#9aa8b2", "baseline_rule");
+    write_svg_method(sol.scenario, sol.pins, sol.tabu_points, sol.tabu_routes, sol.tabu_metrics,
+                     out + "/layout_kmeans_tabu_astar.svg", "#5a9b73", "kmeans_tabu_astar");
+    write_svg_method(sol.scenario, sol.pins, sol.pso_points, sol.pso_routes, sol.pso_metrics,
+                     out + "/layout_pso_hanan_tabu_astar.svg", "#3178b8", "pso_hanan_tabu_astar");
+    write_svg_method(sol.scenario, sol.pins, sol.points, sol.routes, sol.metrics,
+                     out + "/layout_pso_congestion_reroute_astar.svg", "#c6922f", "pso_congestion_reroute_astar");
 }
 
 Solution solve(const Scenario &scenario) {
@@ -602,6 +618,8 @@ Solution solve(const Scenario &scenario) {
     auto b1 = std::chrono::steady_clock::now();
     const double base_ms = std::chrono::duration<double, std::milli>(b1 - b0).count();
     sol.baseline_metrics = evaluate(scenario, "baseline_rule", scenario.pin_count, base_points, base_routes, base_ms);
+    sol.baseline_points = base_points;
+    sol.baseline_routes = base_routes;
 
     auto t0 = std::chrono::steady_clock::now();
     auto tabu_points = place_optimized(scenario, sol.pins);
@@ -609,6 +627,8 @@ Solution solve(const Scenario &scenario) {
     auto t1 = std::chrono::steady_clock::now();
     const double tabu_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
     sol.tabu_metrics = evaluate(scenario, "kmeans_tabu_astar", scenario.pin_count, tabu_points, tabu_routes, tabu_ms);
+    sol.tabu_points = tabu_points;
+    sol.tabu_routes = tabu_routes;
 
     auto p0 = std::chrono::steady_clock::now();
     auto pso_points = place_pso_hanan(scenario, sol.pins);
@@ -616,6 +636,8 @@ Solution solve(const Scenario &scenario) {
     auto p1 = std::chrono::steady_clock::now();
     const double pso_ms = std::chrono::duration<double, std::milli>(p1 - p0).count();
     sol.pso_metrics = evaluate(scenario, "pso_hanan_tabu_astar", scenario.pin_count, pso_points, pso_routes, pso_ms);
+    sol.pso_points = pso_points;
+    sol.pso_routes = pso_routes;
 
     auto c0 = std::chrono::steady_clock::now();
     sol.points = pso_points;

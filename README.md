@@ -42,6 +42,40 @@ make run-all
 - `routes.csv`：每条网络的布线成功状态、线长和路径。
 - `metrics.csv`：各算法的覆盖率、布通率、面积占比、线长、违规数、拥塞峰值、拥挤网格数和运行时间。
 - `layout.svg`：金手指、障碍区、测试点和布线路径可视化。
+- `layout_baseline_rule.svg`：人工/规则基线方案的布线结果。
+- `layout_kmeans_tabu_astar.svg`：K-means + 禁忌搜索方案的布线结果。
+- `layout_pso_hanan_tabu_astar.svg`：PSO-Hanan 候选引导方案的布线结果。
+- `layout_pso_congestion_reroute_astar.svg`：拥塞反馈拆线重布方案的布线结果。
+
+## 公开 KiCad 案例实验
+
+公开 PCB 案例实验脚本优先调用 KiCad CLI 导出原始 PCB 板图，再抽取连接器参数并运行本工程算法。macOS 官方安装包中的默认路径为：
+
+```bash
+/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli
+```
+
+脚本的探测顺序为：环境变量 `KICAD_CLI`、系统 `PATH` 中的 `kicad-cli`、上述 macOS 官方路径。若 KiCad CLI 不可用，脚本会回退到 `.kicad_pcb` 文本解析，并在报告中标注为 fallback。
+
+运行公开案例实验：
+
+```bash
+.venv/bin/python tools/kicad_public_experiments.py
+```
+
+如需手动指定 KiCad CLI：
+
+```bash
+KICAD_CLI=/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli .venv/bin/python tools/kicad_public_experiments.py
+```
+
+输出位于 `results/kicad_cases/`：
+
+- `summary.csv`：论文表格用的指标汇总。
+- `experiment_report.md`：KiCad CLI 版本、公开仓库来源、许可证、指标口径和结果说明。
+- `comparison_contact_sheet.png`：原始 KiCad PCB、规则基线布线和设计算法布线的总览截图。
+- 每个案例目录中的 `original_kicad_pcb.svg/.pdf/.png`：由 KiCad CLI 导出的原始 PCB 截图。
+- 每个案例目录中的 `comparison_original_baseline_algorithm.png`：原始 PCB、基线方案、设计算法的三联对比图。
 
 ## 算法说明
 

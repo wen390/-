@@ -70,6 +70,12 @@ struct Metrics {
 struct Solution {
     Scenario scenario;
     std::vector<Pin> pins;
+    std::vector<TestPoint> baseline_points;
+    std::vector<Route> baseline_routes;
+    std::vector<TestPoint> tabu_points;
+    std::vector<Route> tabu_routes;
+    std::vector<TestPoint> pso_points;
+    std::vector<Route> pso_routes;
     std::vector<TestPoint> points;
     std::vector<Route> routes;
     Metrics metrics;
