@@ -124,6 +124,34 @@ def add_picture(doc, path, width_cm, caption):
     return p
 
 
+def add_case_image_grid(doc, case_name, case_dir, figure_no):
+    add_caption(doc, f"图A-{figure_no} {case_name}案例独立截图对比")
+    table = doc.add_table(rows=2, cols=2)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.style = "Table Grid"
+    items = [
+        ("原始PCB", case_dir / "01_original_pcb.png"),
+        ("解析覆盖", case_dir / "02_parse_overlay.png"),
+        ("规则基线", case_dir / "02_baseline_rule.png"),
+        ("设计算法", case_dir / "03_algorithm_pso_congestion_reroute_astar.png"),
+    ]
+    for idx, (label, path) in enumerate(items):
+        cell = table.rows[idx // 2].cells[idx % 2]
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        cell.width = Cm(8.1)
+        p = cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.first_line_indent = None
+        r = p.add_run(label)
+        set_run_font(r, 9.5, bold=True, east="黑体", west="Times New Roman")
+        if path.exists():
+            pic = cell.add_paragraph()
+            pic.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            pic.paragraph_format.first_line_indent = None
+            pic.add_run().add_picture(str(path), width=Cm(7.8))
+    doc.add_paragraph()
+
+
 def read_summary():
     rows = list(csv.DictReader((RESULT_DIR / "summary.csv").open(encoding="utf-8")))
     by_case: dict[str, dict[str, dict]] = {}
@@ -163,6 +191,21 @@ def metric_rows(by_case):
             base["violations"],
             final["violations"],
         ])
+    return rows
+
+
+def case_display_name(case):
+    return case.replace("eda_", "").replace("_", " ")
+
+
+def separate_case_dirs(by_case):
+    base = RESULT_DIR / "separate_screenshots"
+    rows = []
+    for case in by_case:
+        suffix = case.replace("eda_", "")
+        matches = sorted(base.glob(f"eda_case_*_{suffix}"))
+        if matches:
+            rows.append((case_display_name(case), matches[0]))
     return rows
 
 
@@ -225,8 +268,10 @@ def main():
     add_para(doc, "本次补充实验共使用7个公开EDA案例，其中4个为原有公开KiCad案例，3个为新增GitHub公开项目，覆盖PCIe、mini-PCIe、M.2/NGFF等边缘连接器或金手指类结构。实验环境检测到KiCad CLI版本为10.0.2，所有案例均完成原始板图导出、解析覆盖图生成和算法布点布线截图。")
     add_table(doc, ["案例", "公开仓库", "许可证", "EDA文件", "选中封装", "引脚", "Gerber/DRL", "钻孔数"], source_rows(by_case), [2.3, 2.8, 1.5, 2.3, 2.9, 0.9, 1.3, 0.9])
     add_table(doc, ["案例", "基线布通/%", "算法布通/%", "基线面积/%", "算法面积/%", "基线违规", "算法违规"], metric_rows(by_case), [3.0, 2.0, 2.0, 2.0, 2.0, 1.6, 1.6])
-    doc.add_page_break()
-    add_picture(doc, RESULT_DIR / "eda_contact_sheet.png", 13.2, "图A-2 公开EDA案例原图、解析覆盖图与算法布线结果")
+    add_para(doc, "为避免总览图在论文版面中缩放过小，以下将7个公开EDA案例拆分为独立截图组。每组均包含原始PCB板图、解析覆盖图、规则基线结果和设计算法结果，可作为论文实验截图或答辩材料直接引用。")
+    for idx, (case_name, case_dir) in enumerate(separate_case_dirs(by_case), start=2):
+        doc.add_page_break()
+        add_case_image_grid(doc, case_name, case_dir, idx)
     add_para(doc, "由补充实验可见，规则基线在高密度M.2/NGFF案例中出现明显未布通和违规，设计算法在7个公开EDA案例中均达到100%布通；平均布通率由72.94%提升至100.00%，平均尾板面积占比由72.30%降低至27.80%。该结果说明，新增真实EDA解析入口能够把公开EDA文件中的端子结构转化为算法可处理的输入，并形成可复现实验闭环。")
 
     add_heading(doc, "4 建议替换第7.2展望相关表述", 2)
