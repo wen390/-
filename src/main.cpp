@@ -77,6 +77,18 @@ Scenario read_scenario(const std::string &path) {
     if (kv.count("min_testpoint_spacing_mm")) s.rules.min_testpoint_spacing_mm = std::stod(kv["min_testpoint_spacing_mm"]);
     if (kv.count("line_spacing_mm")) s.rules.line_spacing_mm = std::stod(kv["line_spacing_mm"]);
     if (kv.count("max_iterations")) s.rules.max_iterations = std::stoi(kv["max_iterations"]);
+    if (kv.count("pin_positions")) {
+        for (const auto &raw : split(kv["pin_positions"], ';')) {
+            if (raw.empty() || raw == "none") continue;
+            auto p = split(raw, ':');
+            if (p.size() == 3) {
+                s.explicit_pin_positions.push_back({std::stod(p[1]), std::stod(p[2])});
+            } else if (p.size() == 2) {
+                s.explicit_pin_positions.push_back({std::stod(p[0]), std::stod(p[1])});
+            }
+        }
+        if (!s.explicit_pin_positions.empty()) s.pin_count = static_cast<int>(s.explicit_pin_positions.size());
+    }
     if (kv.count("obstacles")) {
         for (const auto &raw : split(kv["obstacles"], ';')) {
             if (raw.empty() || raw == "none") continue;
@@ -94,6 +106,16 @@ Scenario read_scenario(const std::string &path) {
 
 std::vector<Pin> generate_pins(const Scenario &s) {
     std::vector<Pin> pins;
+    if (!s.explicit_pin_positions.empty()) {
+        pins.reserve(s.explicit_pin_positions.size());
+        for (std::size_t i = 0; i < s.explicit_pin_positions.size(); ++i) {
+            Point p = s.explicit_pin_positions[i];
+            p.x = std::max(0.0, std::min(s.rules.width_mm, p.x));
+            p.y = std::max(0.0, std::min(s.rules.tail_height_mm, p.y));
+            pins.push_back({static_cast<int>(i) + 1, p});
+        }
+        return pins;
+    }
     const double span = (s.pin_count - 1) * s.rules.pin_pitch_mm;
     const double start = (s.rules.width_mm - span) / 2.0;
     pins.reserve(static_cast<std::size_t>(s.pin_count));

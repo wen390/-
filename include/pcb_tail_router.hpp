@@ -31,6 +31,7 @@ struct Scenario {
     std::string name;
     int pin_count = 40;
     DesignRules rules;
+    std::vector<Point> explicit_pin_positions;
     std::vector<Rect> obstacles;
 };
 

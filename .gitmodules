@@ -1,0 +1,24 @@
+[submodule "data/kicad_public/PCIe-Aux-Signal-Breakout"]
+	path = data/kicad_public/PCIe-Aux-Signal-Breakout
+	url = https://github.com/Supercookiegaming/PCIe-Aux-Signal-Breakout.git
+	ignore = dirty
+[submodule "data/kicad_public/PCIeTestPCB"]
+	path = data/kicad_public/PCIeTestPCB
+	url = https://github.com/mengstr/PCIeTestPCB.git
+	ignore = dirty
+[submodule "data/kicad_public/Pi5_PCIe"]
+	path = data/kicad_public/Pi5_PCIe
+	url = https://github.com/m1geo/Pi5_PCIe.git
+	ignore = dirty
+[submodule "data/kicad_public/kicad-mini-pci-express"]
+	path = data/kicad_public/kicad-mini-pci-express
+	url = https://github.com/mithro/kicad-mini-pci-express.git
+	ignore = dirty
+[submodule "data/kicad_public/coral-dual-m2-adapter-pcb"]
+	path = data/kicad_public/coral-dual-m2-adapter-pcb
+	url = https://github.com/serg987/coral-dual-m2-adapter-pcb.git
+	ignore = dirty
+[submodule "data/kicad_public/5g-m2-usb3-interface-pcb"]
+	path = data/kicad_public/5g-m2-usb3-interface-pcb
+	url = https://github.com/themainframe/5g-m2-usb3-interface-pcb.git
+	ignore = dirty

@@ -1,0 +1,16 @@
+# source_repo,Supercookiegaming/PCIe-Aux-Signal-Breakout
+# source_url,https://github.com/Supercookiegaming/PCIe-Aux-Signal-Breakout
+# source_pcb,data/kicad_public/PCIe-Aux-Signal-Breakout/KiCad/PCIe-Aux-Signal-Breakout/PCIe-Aux-Signal-Breakout.kicad_pcb
+# gerber_dir,data/kicad_public/PCIe-Aux-Signal-Breakout/Gerber
+# selected_footprint,PCIexpress:PCIexpress_x1
+name,eda_pcie_aux_signal_breakout
+pins,36
+width_mm,96.21
+tail_height_mm,34.0
+pin_pitch_mm,1.0
+pin_positions,1:4.000:0.000;2:4.000:0.000;3:8.642:0.000;4:8.642:0.000;5:13.285:0.000;6:13.285:0.000;7:17.927:0.000;8:17.927:0.000;9:22.570:0.000;10:22.570:0.000;11:27.212:0.000;12:27.212:0.000;13:31.854:0.000;14:31.854:0.000;15:36.497:0.000;16:36.497:0.000;17:41.139:0.000;18:41.139:0.000;19:45.781:0.000;20:45.781:0.000;21:50.424:0.000;22:50.424:0.000;23:64.351:0.000;24:64.351:0.000;25:68.993:0.000;26:68.993:0.000;27:73.636:0.000;28:73.636:0.000;29:78.278:0.000;30:78.278:0.000;31:82.920:0.000;32:82.920:0.000;33:87.563:0.000;34:87.563:0.000;35:92.205:0.000;36:92.205:0.000
+grid_mm,1.0
+min_testpoint_spacing_mm,2.0
+line_spacing_mm,0.5
+max_iterations,100
+obstacles,69.1:23.6:74.7:27.2;71.3:23.4:76.9:27.0;71.5:23.9:77.1:27.5;70.4:24.2:76.0:27.8
