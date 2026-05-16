@@ -92,12 +92,21 @@ KICAD_CLI=/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli .venv/bin/pytho
 - `results/eda_cases/eda_parse_report.md`：解析字段、公开来源、KiCad CLI 版本和量化结论。
 - `results/eda_cases/sources.md`：公开仓库 URL、许可证和文件类型说明。
 - `results/eda_cases/eda_contact_sheet.png`：原始 EDA/KiCad 板图、解析覆盖图和算法布线结果总览。
+- `results/eda_cases/separate_screenshots/`：每个 EDA 案例拆分后的高清独立截图。
 
 对应论文补充稿由下列脚本生成：
 
 ```bash
 /Users/yunhe/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 tools/build_eda_supplement_docx.py
 ```
+
+如需将总览截图拆成每个案例的高清单图，可运行：
+
+```bash
+.venv/bin/python tools/export_case_screenshots.py
+```
+
+脚本会同时导出 `results/eda_cases/separate_screenshots/` 和 `results/kicad_cases/separate_screenshots/`，包含原始 PCB、解析覆盖图、规则基线、设计算法和单案例高清对比图。
 
 ## 算法说明
 
